@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file:; font-src 'self' data:; connect-src 'self' ws: wss:; worker-src 'self' blob:;" />
+        content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file:; font-src 'self' data:; connect-src 'self' http://127.0.0.1:19283 ws: wss:; worker-src 'self' blob:;" />
   <title>Pulse</title>
   <link rel="stylesheet" href="ui.css" />
 </head>
@@ -44,7 +44,7 @@
     <!-- ============================ body ============================ -->
     <div class="body">
 
-      <!-- ------------------------------ sidebar ---------------------- -->
+      <!-- ------------------------- control panel --------------------- -->
       <aside class="sidebar">
         <div class="sidebar__group">
           <button class="action action--primary" id="btn-execute">
@@ -71,12 +71,6 @@
             <span class="action__hint">Ctrl+O</span>
           </button>
 
-          <button class="action" id="btn-save">
-            <span class="action__icon">⤓</span>
-            <span class="action__text">Save</span>
-            <span class="action__hint">Ctrl+S</span>
-          </button>
-
           <button class="action action--hub" id="btn-hub">
             <span class="action__icon">❯❯</span>
             <span class="action__text">Script Hub</span>
@@ -85,9 +79,10 @@
         </div>
 
         <div class="sidebar__foot">
+          <div class="mini-row"><span class="mini-key">core</span><span id="side-core">—</span></div>
+          <div class="mini-row"><span class="mini-key">mode</span><span id="side-mode">offline</span></div>
+          <div class="mini-row"><span class="mini-key">clients</span><span id="side-clients">0</span></div>
           <div class="mini-row"><span class="mini-key">engine</span><span id="side-engine">monaco</span></div>
-          <div class="mini-row"><span class="mini-key">target</span><span id="side-target">—</span></div>
-          <div class="mini-row"><span class="mini-key">lua</span><span id="side-lua">checking…</span></div>
         </div>
       </aside>
 
@@ -97,7 +92,7 @@
 
         <div class="editor-host" id="editor-host">
           <!-- Monaco is injected here; the built-in Pulse editor is used when
-               the Monaco bundle is unavailable. Language is always Lua. -->
+               the Monaco bundle is unavailable. Both are locked to Lua. -->
           <div class="pulse-editor" id="pulse-editor">
             <div class="pulse-editor__gutter" id="gutter"></div>
             <div class="pulse-editor__scroll">
@@ -143,6 +138,7 @@
     <!-- ========================== status bar ========================= -->
     <footer class="statusbar">
       <span class="status-badge" id="st-status">Status: Not Attached</span>
+      <span class="status__clients" id="st-clients">clients: 0</span>
       <span class="status__msg" id="st-message">ready</span>
       <span class="status__item" id="st-pos">Ln 1, Col 1</span>
       <span class="status__item status__item--lang">lua</span>

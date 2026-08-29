@@ -25,7 +25,8 @@
     "dist": "electron-builder",
     "dist:win": "electron-builder --win --x64 --ia32",
     "dist:win64": "electron-builder --win --x64",
-    "dist:dir": "electron-builder --dir"
+    "dist:dir": "electron-builder --dir",
+    "build:xeno": "node Xeno/bridge/build.js"
   },
   "dependencies": {
     "monaco-editor": "^0.56.0"
@@ -46,8 +47,10 @@
     "files": [
       "main.js",
       "package.json",
+      "icon_pulse.ico",
       "src/**/*",
       "node_modules/**/*",
+      "!Xeno/**",
       "!node_modules/*/{test,__tests__,tests,example,examples}/**",
       "!**/*.map",
       "!**/*.md"
@@ -91,6 +94,16 @@
       "category": "Development"
     },
     "compression": "maximum",
-    "removePackageScripts": true
+    "removePackageScripts": true,
+    "extraResources": [
+      {
+        "from": "Xeno",
+        "to": "Xeno",
+        "filter": [
+          "bin/**/*",
+          "bridge/build/**/*.node"
+        ]
+      }
+    ]
   }
 }

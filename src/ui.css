@@ -1,7 +1,8 @@
 /* =========================================================================
-   Pulse — executor UI (dark cyberpunk, neon violet #a855f7 + cyan #22d3ee)
-   Monolithic compact layout:
-     titlebar 30px | sidebar 132px · editor 1fr · script hub 196px | status 22px
+   Pulse — executor shell for the Xeno C++ core
+   Dark cyberpunk, neon violet #a855f7 + cyan #22d3ee.
+   Monolithic compact grid:
+     titlebar 30 | control panel 128 · editor 1fr · script hub 190 | status 22
    ========================================================================= */
 
 :root {
@@ -59,8 +60,8 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
   grid-template-rows: 30px 1fr 22px;
   height: 100vh;
   background:
-    radial-gradient(900px 480px at 12% -12%, rgba(168, 85, 247, .18), transparent 60%),
-    radial-gradient(700px 420px at 100% 112%, rgba(34, 211, 238, .10), transparent 60%),
+    radial-gradient(880px 460px at 12% -14%, rgba(168, 85, 247, .18), transparent 60%),
+    radial-gradient(680px 400px at 100% 112%, rgba(34, 211, 238, .10), transparent 60%),
     var(--bg);
   border: 1px solid var(--line);
 }
@@ -76,7 +77,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
   -webkit-app-region: drag;
   user-select: none;
 }
-.titlebar__left   { display: flex; align-items: center; gap: 6px; min-width: 120px; }
+.titlebar__left   { display: flex; align-items: center; gap: 6px; min-width: 118px; }
 .titlebar__center { display: flex; align-items: center; gap: 9px; flex: 1; justify-content: center; overflow: hidden; }
 .titlebar__right  { display: flex; align-items: center; gap: 3px; margin-left: auto; -webkit-app-region: no-drag; }
 
@@ -124,13 +125,13 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
 /* ------------------------------------------------------------------ body */
 .body {
   display: grid;
-  grid-template-columns: 132px minmax(0, 1fr) 196px;
+  grid-template-columns: 128px minmax(0, 1fr) 190px;
   min-height: 0;
 }
-body.no-hub .body { grid-template-columns: 132px minmax(0, 1fr) 0; }
+body.no-hub .body { grid-template-columns: 128px minmax(0, 1fr) 0; }
 body.no-hub .hub { display: none; }
 
-/* --------------------------------------------------------------- sidebar */
+/* -------------------------------------------------------- control panel */
 .sidebar {
   display: flex;
   flex-direction: column;
@@ -145,7 +146,7 @@ body.no-hub .hub { display: none; }
 .action {
   position: relative;
   display: grid;
-  grid-template-columns: 14px 1fr auto;
+  grid-template-columns: 13px 1fr auto;
   align-items: center;
   gap: 6px;
   width: 100%;
@@ -180,6 +181,11 @@ body.no-hub .hub { display: none; }
   background: linear-gradient(180deg, rgba(34, 211, 238, .22), rgba(21, 13, 36, .9));
   border-color: var(--cyan);
 }
+.action--attach.is-on {
+  border-color: rgba(74, 222, 128, .7);
+  background: linear-gradient(180deg, rgba(74, 222, 128, .2), rgba(21, 13, 36, .9));
+}
+.action--attach.is-on .action__icon { color: var(--ok); }
 .action[disabled] { opacity: .45; pointer-events: none; }
 
 .sidebar__foot {
@@ -192,6 +198,9 @@ body.no-hub .hub { display: none; }
 .mini-row { display: flex; justify-content: space-between; gap: 6px; font-size: 9px; color: var(--text-dim); }
 .mini-row span:last-child { color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mini-key { color: #4b3a68; text-transform: uppercase; letter-spacing: .12em; }
+#side-core.is-on { color: var(--ok); }
+#side-mode.is-on { color: var(--cyan); }
+#side-clients.is-on { color: var(--violet-lite); }
 
 /* ---------------------------------------------------------- editor pane */
 .editor-pane { display: grid; grid-template-rows: 24px minmax(0, 1fr); min-width: 0; min-height: 0; }
@@ -207,7 +216,7 @@ body.no-hub .hub { display: none; }
 .tab {
   display: flex; align-items: center; gap: 5px;
   padding: 0 7px;
-  max-width: 160px;
+  max-width: 150px;
   font-size: 10px;
   color: var(--text-faint);
   background: rgba(21, 13, 36, .7);
@@ -449,7 +458,6 @@ body.no-hub .hub { display: none; }
 .status-badge {
   padding: 1px 8px;
   font-size: 9.5px;
-  letter-spacing: .04em;
   border-radius: 20px;
   border: 1px solid transparent;
   white-space: nowrap;
@@ -466,6 +474,8 @@ body.no-hub .hub { display: none; }
   border-color: rgba(74, 222, 128, .5);
   text-shadow: 0 0 10px rgba(74, 222, 128, .6);
 }
+.status__clients { white-space: nowrap; color: var(--text-dim); }
+.status__clients.is-on { color: var(--violet-lite); }
 .status__msg {
   flex: 1;
   overflow: hidden;

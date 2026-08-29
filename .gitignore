@@ -20,3 +20,10 @@ desktop.ini
 .vscode/
 .idea/
 *.swp
+
+# compiled Xeno core / native bridge build output
+Xeno/bin/*.dll
+Xeno/bin/*.exe
+Xeno/bin/*.pdb
+Xeno/bridge/build/
+Xeno/host/build/

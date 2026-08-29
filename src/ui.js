@@ -1,26 +1,28 @@
 /* =========================================================================
-   Pulse — executor UI (renderer)
+   Pulse — Electron shell for the Xeno C++ core (renderer)
 
-   • Monaco is hard-wired to Lua, the built-in fallback editor is Lua-only too
-   • left column: Execute / Clear / Attach / Open File / Save / Script Hub
+   • Monaco is locked to Lua, the built-in fallback editor is Lua-only too
+   • left column:  Execute / Clear / Attach / Open File / Script Hub
    • right column: Script Hub — click a script to load it into the editor
-   • bottom: slim status bar with "Status: Not Attached" / "Status: Attached"
+   • bottom:      slim status bar with Status: Not Attached / Status: Attached
+
+   All privileged work happens in main.js:
+     Attach  -> pulse:attach    (native FFI into Xeno.dll, or the compiled
+                                 core module spawned with child_process)
+     Execute -> pulse:execute   (core when attached, local Lua otherwise)
    ========================================================================= */
 
 'use strict';
 
-/* ------------------------------------------------------------------ state */
-
-const LANGUAGE = 'lua';            // the editor speaks Lua and nothing else
-const RUNNER = 'lua';
+const LANGUAGE = 'lua';
 
 const state = {
   tabs: [],
   activeTabId: null,
   busy: false,
-  runId: null,
   attached: false,
-  attachPid: null,
+  core: { available: false, mode: 'none', dllPath: null, exePath: null, addonPath: null, port: 19283 },
+  clients: [],
   hubOpen: true,
   filter: '',
   luaAvailable: false,
@@ -52,20 +54,24 @@ const dom = {
 
   statusFile: $('status-file'),
   appVersion: $('app-version'),
+  sideCore: $('side-core'),
+  sideMode: $('side-mode'),
+  sideClients: $('side-clients'),
   sideEngine: $('side-engine'),
-  sideTarget: $('side-target'),
-  sideLua: $('side-lua'),
 
   stStatus: $('st-status'),
+  stClients: $('st-clients'),
   stMessage: $('st-message'),
   stPos: $('st-pos'),
   stEngine: $('st-engine'),
+
+  btnAttach: $('btn-attach'),
 };
 
 /* =========================================================================
-   Script Hub catalogue — ready-to-run Lua templates for the Roblox API.
-   These are self-contained demos for your own places / private servers:
-   no network calls, no data collection, everything is reversible.
+   Script Hub catalogue — Lua templates built on the documented Roblox API.
+   Self-contained demos for your own places / private servers: no network
+   calls, no data collection, every effect is reversible.
    ========================================================================= */
 
 const SCRIPTS = [
@@ -167,97 +173,6 @@ player.CharacterRemoving:Connect(stop)
 print("[Pulse] Fly Script loaded - press F to fly")
 `,
   },
-
-  {
-    id: 'aimbot',
-    name: 'AimBot',
-    tag: 'combat',
-    code:
-`--[[
-    Pulse - AimBot (aim assist template)
-    Hold right mouse button to lock onto the closest visible target.
-    Requires an executor that exposes mousemoverel().
-]]
-local Players          = game:GetService("Players")
-local RunService       = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-
-local camera = workspace.CurrentCamera
-
-local CONFIG = {
-    Enabled      = true,
-    AimPart      = "Head",
-    FOV          = 150,     -- radius in pixels
-    MaxDistance  = 300,
-    TeamCheck    = true,
-    Smoothness   = 0.35,    -- 0..1, 1 = instant
-    WallCheck    = true,
-}
-
-if type(mousemoverel) ~= "function" then
-    warn("[Pulse] mousemoverel() is unavailable in this environment")
-    return
-end
-
-local localPlayer = Players.LocalPlayer
-
-local function sameTeam(other)
-    return CONFIG.TeamCheck and other.Team == localPlayer.Team
-end
-
-local function visible(part)
-    if not CONFIG.WallCheck then return true end
-    local origin = camera.CFrame.Position
-    local params = RaycastParams.new()
-    params.FilterType                 = Enum.RaycastFilterType.Blacklist
-    params.FilterDescendantsInstances = { localPlayer.Character }
-    local hit = workspace:Raycast(origin, part.Position - origin, params)
-    return (not hit) or hit.Instance:IsDescendantOf(part.Parent)
-end
-
-local function closestTarget()
-    local best, bestDistance = nil, math.huge
-    local centre = camera.ViewportSize / 2
-
-    for _, other in ipairs(Players:GetPlayers()) do
-        if other ~= localPlayer and other.Character and not sameTeam(other) then
-            local part   = other.Character:FindFirstChild(CONFIG.AimPart)
-            local human  = other.Character:FindFirstChildOfClass("Humanoid")
-            if part and human and human.Health > 0 then
-                local screen, onScreen = camera:WorldToViewportPoint(part.Position)
-                local distance3d = (part.Position - camera.CFrame.Position).Magnitude
-                if onScreen and distance3d <= CONFIG.MaxDistance then
-                    local offset   = (Vector2.new(screen.X, screen.Y) - centre).Magnitude
-                    if offset <= CONFIG.FOV and offset < bestDistance and visible(part) then
-                        best, bestDistance = part, offset
-                    end
-                end
-            end
-        end
-    end
-
-    return best
-end
-
-RunService.RenderStepped:Connect(function()
-    if not CONFIG.Enabled then return end
-    if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then return end
-
-    local target = closestTarget()
-    if not target then return end
-
-    local screen  = camera:WorldToViewportPoint(target.Position)
-    local centre  = camera.ViewportSize / 2
-    local deltaX  = (screen.X - centre.X) * CONFIG.Smoothness
-    local deltaY  = (screen.Y - centre.Y) * CONFIG.Smoothness
-
-    mousemoverel(deltaX, deltaY)
-end)
-
-print("[Pulse] AimBot loaded - hold RMB to assist")
-`,
-  },
-
   {
     id: 'esp',
     name: 'ESP',
@@ -271,14 +186,13 @@ local Players    = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 local CONFIG = {
-    Enabled      = true,
-    ShowNames    = true,
-    ShowDistance = true,
-    MaxDistance  = 800,
-    FillTransparency = 0.65,
-    FriendColor  = Color3.fromRGB(80, 255, 170),
-    EnemyColor   = Color3.fromRGB(255, 90, 160),
-    TextColor    = Color3.fromRGB(235, 225, 255),
+    Enabled           = true,
+    ShowDistance      = true,
+    MaxDistance       = 800,
+    FillTransparency  = 0.65,
+    FriendColor       = Color3.fromRGB(80, 255, 170),
+    EnemyColor        = Color3.fromRGB(255, 90, 160),
+    TextColor         = Color3.fromRGB(235, 225, 255),
 }
 
 local localPlayer = Players.LocalPlayer
@@ -287,11 +201,11 @@ local tracked     = {}
 
 local function makeLabel(name)
     local gui = Instance.new("BillboardGui")
-    gui.Name           = "PulseTag"
-    gui.Size           = UDim2.new(0, 160, 0, 34)
-    gui.StudsOffset    = Vector3.new(0, 2.6, 0)
-    gui.AlwaysOnTop    = true
-    gui.MaxDistance    = CONFIG.MaxDistance
+    gui.Name        = "PulseTag"
+    gui.Size        = UDim2.new(0, 160, 0, 34)
+    gui.StudsOffset = Vector3.new(0, 2.6, 0)
+    gui.AlwaysOnTop = true
+    gui.MaxDistance = CONFIG.MaxDistance
 
     local text = Instance.new("TextLabel")
     text.Name                   = "Label"
@@ -312,12 +226,12 @@ local function attach(character, player)
     character:SetAttribute("PulseEsp", true)
 
     local highlight = Instance.new("Highlight")
-    highlight.Name              = "PulseHighlight"
-    highlight.FillTransparency  = CONFIG.FillTransparency
-    highlight.OutlineColor      = Color3.fromRGB(255, 255, 255)
+    highlight.Name                = "PulseHighlight"
+    highlight.FillTransparency    = CONFIG.FillTransparency
+    highlight.OutlineColor        = Color3.fromRGB(255, 255, 255)
     highlight.OutlineTransparency = 0.2
-    highlight.Adornee           = character
-    highlight.Parent            = character
+    highlight.Adornee             = character
+    highlight.Parent              = character
 
     local gui, label = makeLabel(player.DisplayName)
     gui.Adornee = character:WaitForChild("Head", 5)
@@ -371,65 +285,6 @@ end)
 print("[Pulse] ESP loaded - " .. tostring(#Players:GetPlayers()) .. " player(s) tracked")
 `,
   },
-
-  {
-    id: 'speedhack',
-    name: 'SpeedHack',
-    tag: 'movement',
-    code:
-`--[[
-    Pulse - SpeedHack
-    Numpad + / -   change speed by 5
-    Numpad *       reset to the default speed
-]]
-local Players           = game:GetService("Players")
-local UserInputService  = game:GetService("UserInputService")
-
-local player = Players.LocalPlayer
-
-local CONFIG = {
-    Speed   = 32,
-    Default = 16,
-    Step    = 5,
-    Min     = 8,
-    Max     = 200,
-}
-
-local function apply()
-    local character = player.Character
-    local human     = character and character:FindFirstChildOfClass("Humanoid")
-    if human then
-        human.WalkSpeed = CONFIG.Speed
-    end
-end
-
-local function set(value)
-    CONFIG.Speed = math.clamp(value, CONFIG.Min, CONFIG.Max)
-    apply()
-    print(string.format("[Pulse] WalkSpeed = %d", CONFIG.Speed))
-end
-
-player.CharacterAdded:Connect(function()
-    task.wait(0.5)
-    apply()
-end)
-
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.KeyCode == Enum.KeyCode.KeypadPlus then
-        set(CONFIG.Speed + CONFIG.Step)
-    elseif input.KeyCode == Enum.KeyCode.KeypadMinus then
-        set(CONFIG.Speed - CONFIG.Step)
-    elseif input.KeyCode == Enum.KeyCode.KeypadMultiply then
-        set(CONFIG.Default)
-    end
-end)
-
-apply()
-print("[Pulse] SpeedHack loaded - use Numpad +/- to adjust")
-`,
-  },
-
   {
     id: 'infinite-yield',
     name: 'Infinite Yield',
@@ -437,7 +292,7 @@ print("[Pulse] SpeedHack loaded - use Numpad +/- to adjust")
     code:
 `--[[
     Pulse - Infinite Yield (mini)
-    A compact admin command bar. Press the ; key (or click the box) to type.
+    Compact admin command bar. Press ; (or click the box) to type.
 
     Commands:  fly  noclip  esp  speed <n>  jump <n>  heal  reset  cmds
 ]]
@@ -445,8 +300,8 @@ local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService       = game:GetService("RunService")
 
-local player      = Players.LocalPlayer
-local playerGui   = player:WaitForChild("PlayerGui")
+local player    = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
 
 local screen = Instance.new("ScreenGui")
 screen.Name           = "PulseAdmin"
@@ -592,7 +447,141 @@ end)
 print("[Pulse] Infinite Yield (mini) loaded - press ; to open the command bar")
 `,
   },
+  {
+    id: 'aimbot',
+    name: 'AimBot',
+    tag: 'combat',
+    code:
+`--[[
+    Pulse - AimBot (aim assist template)
+    Hold right mouse button to lock onto the closest visible target.
+    Needs an environment that exposes mousemoverel().
+]]
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
+local camera = workspace.CurrentCamera
+
+local CONFIG = {
+    Enabled     = true,
+    AimPart     = "Head",
+    FOV         = 150,   -- radius in pixels
+    MaxDistance = 300,
+    TeamCheck   = true,
+    Smoothness  = 0.35,  -- 0..1, 1 = instant
+    WallCheck   = true,
+}
+
+if type(mousemoverel) ~= "function" then
+    warn("[Pulse] mousemoverel() is unavailable in this environment")
+    return
+end
+
+local localPlayer = Players.LocalPlayer
+
+local function sameTeam(other)
+    return CONFIG.TeamCheck and other.Team == localPlayer.Team
+end
+
+local function visible(part)
+    if not CONFIG.WallCheck then return true end
+    local origin = camera.CFrame.Position
+    local params = RaycastParams.new()
+    params.FilterType                 = Enum.RaycastFilterType.Blacklist
+    params.FilterDescendantsInstances = { localPlayer.Character }
+    local hit = workspace:Raycast(origin, part.Position - origin, params)
+    return (not hit) or hit.Instance:IsDescendantOf(part.Parent)
+end
+
+local function closestTarget()
+    local best, bestDistance = nil, math.huge
+    local centre = camera.ViewportSize / 2
+
+    for _, other in ipairs(Players:GetPlayers()) do
+        if other ~= localPlayer and other.Character and not sameTeam(other) then
+            local part  = other.Character:FindFirstChild(CONFIG.AimPart)
+            local human = other.Character:FindFirstChildOfClass("Humanoid")
+            if part and human and human.Health > 0 then
+                local screen, onScreen = camera:WorldToViewportPoint(part.Position)
+                local distance3d = (part.Position - camera.CFrame.Position).Magnitude
+                if onScreen and distance3d <= CONFIG.MaxDistance then
+                    local offset = (Vector2.new(screen.X, screen.Y) - centre).Magnitude
+                    if offset <= CONFIG.FOV and offset < bestDistance and visible(part) then
+                        best, bestDistance = part, offset
+                    end
+                end
+            end
+        end
+    end
+
+    return best
+end
+
+RunService.RenderStepped:Connect(function()
+    if not CONFIG.Enabled then return end
+    if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then return end
+
+    local target = closestTarget()
+    if not target then return end
+
+    local screen = camera:WorldToViewportPoint(target.Position)
+    local centre = camera.ViewportSize / 2
+    mousemoverel((screen.X - centre.X) * CONFIG.Smoothness, (screen.Y - centre.Y) * CONFIG.Smoothness)
+end)
+
+print("[Pulse] AimBot loaded - hold RMB to assist")
+`,
+  },
+  {
+    id: 'speedhack',
+    name: 'SpeedHack',
+    tag: 'movement',
+    code:
+`--[[
+    Pulse - SpeedHack
+    Numpad + / -   change speed by 5
+    Numpad *       reset to the default speed
+]]
+local Players          = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+
+local CONFIG = { Speed = 32, Default = 16, Step = 5, Min = 8, Max = 200 }
+
+local function apply()
+    local character = player.Character
+    local human     = character and character:FindFirstChildOfClass("Humanoid")
+    if human then human.WalkSpeed = CONFIG.Speed end
+end
+
+local function set(value)
+    CONFIG.Speed = math.clamp(value, CONFIG.Min, CONFIG.Max)
+    apply()
+    print(string.format("[Pulse] WalkSpeed = %d", CONFIG.Speed))
+end
+
+player.CharacterAdded:Connect(function()
+    task.wait(0.5)
+    apply()
+end)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.KeypadPlus then
+        set(CONFIG.Speed + CONFIG.Step)
+    elseif input.KeyCode == Enum.KeyCode.KeypadMinus then
+        set(CONFIG.Speed - CONFIG.Step)
+    elseif input.KeyCode == Enum.KeyCode.KeypadMultiply then
+        set(CONFIG.Default)
+    end
+end)
+
+apply()
+print("[Pulse] SpeedHack loaded - use Numpad +/- to adjust")
+`,
+  },
   {
     id: 'noclip',
     name: 'Noclip',
@@ -606,8 +595,8 @@ local Players          = game:GetService("Players")
 local RunService       = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
-local player    = Players.LocalPlayer
-local enabled   = false
+local player  = Players.LocalPlayer
+local enabled = false
 local connection
 
 local function characterParts()
@@ -649,7 +638,6 @@ end)
 print("[Pulse] Noclip loaded - press N to toggle")
 `,
   },
-
   {
     id: 'anti-afk',
     name: 'Anti-AFK',
@@ -659,11 +647,10 @@ print("[Pulse] Noclip loaded - press N to toggle")
     Pulse - Anti-AFK
     Keeps the session active so you are not disconnected while idle.
 ]]
-local Players        = game:GetService("Players")
-local VirtualUser    = game:GetService("VirtualUser")
+local Players     = game:GetService("Players")
+local VirtualUser = game:GetService("VirtualUser")
 
 local player = Players.LocalPlayer
-local CONFIG = { IdleLimit = 900 } -- seconds before Roblox idles you out
 
 local function hook()
     player.Idled:Connect(function()
@@ -679,7 +666,7 @@ player.CharacterAdded:Connect(function()
     if player.Idled then hook() end
 end)
 
-print("[Pulse] Anti-AFK loaded (idle limit " .. tostring(CONFIG.IdleLimit) .. "s)")
+print("[Pulse] Anti-AFK loaded")
 `,
   },
 ];
@@ -701,7 +688,6 @@ const RULES = {
       type: 'builtin',
       re: String.raw`\b(?:game|workspace|script|Instance|Vector2|Vector3|CFrame|Color3|UDim2|Enum|RaycastParams|print|warn|error|type|tostring|tonumber|pairs|ipairs|string|table|math|task|select|pcall|setmetatable)\b`,
     },
-    { type: 'func', re: String.raw`\b[A-Za-z_][\w]*(?=\s*[({\"][^)]*\)\s*$)?` },
     { type: 'op', re: String.raw`\.\.\.|\.\.|[=~<>]=|[+\-*/%#^<>=(){}[\];:,.&|]` },
   ],
 };
@@ -755,7 +741,6 @@ function highlightCode(text, language) {
 }
 
 const FallbackEditor = {
-  language: LANGUAGE,
   onChange: null,
   onCursor: null,
 
@@ -811,8 +796,7 @@ const FallbackEditor = {
 
   cursor() {
     if (typeof this.onCursor !== 'function') return;
-    const value = dom.input.value;
-    const lines = value.slice(0, dom.input.selectionStart).split('\n');
+    const lines = dom.input.value.slice(0, dom.input.selectionStart).split('\n');
     this.onCursor({ lineNumber: lines.length, column: lines[lines.length - 1].length + 1 });
   },
 };
@@ -839,7 +823,6 @@ function monacoTheme() {
       { token: 'type', foreground: '67e8f9' },
       { token: 'delimiter', foreground: 'd8b4fe' },
       { token: 'operator', foreground: 'd8b4fe' },
-      { token: 'variable', foreground: 'e6dcf5' },
       { token: 'function', foreground: 'f472b6' },
     ],
     colors: {
@@ -849,7 +832,6 @@ function monacoTheme() {
       'editorLineNumber.activeForeground': '#c98bff',
       'editorCursor.foreground': '#c98bff',
       'editor.selectionBackground': '#6d28d9aa',
-      'editor.inactiveSelectionBackground': '#6d28d955',
       'editor.lineHighlightBackground': '#160d26',
       'editorLineHighlightBorder': '#2a1a44',
       'editorGutter.background': '#08060f',
@@ -861,7 +843,6 @@ function monacoTheme() {
       'editorSuggestWidget.selectedBackground': '#2a1a44',
       'scrollbarSlider.background': '#a855f766',
       'scrollbarSlider.hoverBackground': '#a855f7aa',
-      'scrollbarSlider.activeBackground': '#a855f7cc',
       'editorBracketMatch.background': '#3b1d6b',
       'editorBracketMatch.border': '#a855f7',
     },
@@ -872,7 +853,6 @@ function loadMonaco(basePath) {
   return new Promise((resolve, reject) => {
     if (!basePath) { reject(new Error('monaco bundle not found')); return; }
 
-    // Never let the boot screen hang: 15 s is plenty for a local file.
     const timer = setTimeout(() => reject(new Error('monaco loader timed out after 15 s')), 15000);
     const settle = (fn) => (value) => { clearTimeout(timer); fn(value); };
     const done = settle(resolve);
@@ -920,7 +900,7 @@ function buildMonacoEditor() {
 
   monacoEditor = monaco.editor.create(container, {
     value: '',
-    language: LANGUAGE,                 // Lua — permanently
+    language: LANGUAGE,               // Lua — permanently
     theme: 'pulse-cyber',
     automaticLayout: true,
     fontFamily: 'JetBrains Mono, Fira Code, Cascadia Code, Consolas, monospace',
@@ -941,19 +921,15 @@ function buildMonacoEditor() {
     wordWrap: 'off',
     tabSize: 2,
     insertSpaces: true,
-    suggestOnTriggerCharacters: true,
-    quickSuggestions: { other: true, comments: false, strings: false },
     contextmenu: true,
   });
 
   monacoEditor.onDidChangeModelContent(() => {
-    const tab = activeTab();
-    if (tab) markDirty(tab);
+    markDirty(activeTab());
     updatePositionFromMonaco();
   });
   monacoEditor.onDidChangeCursorPosition(updatePositionFromMonaco);
 
-  // Language services that need workers stay off: Pulse must work offline.
   if (monaco.languages.lua && monaco.languages.lua.luaDefaults) {
     monaco.languages.lua.luaDefaults.setDiagnosticsOptions({ noSemanticValidation: true });
   }
@@ -962,21 +938,14 @@ function buildMonacoEditor() {
     monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions(options);
     monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions(options);
   }
-  if (monaco.languages.json) {
-    monaco.languages.json.jsonDefaults.setDiagnosticsOptions({ validate: false, allowComments: true });
-  }
 
   dom.fallback.hidden = true;
   state.engine = 'monaco';
   renderStatus();
 }
 
-/* -------------------------------------------------------- editor adapter */
-
 const Editor = {
-  getValue() {
-    return monacoEditor ? monacoEditor.getValue() : FallbackEditor.getValue();
-  },
+  getValue() { return monacoEditor ? monacoEditor.getValue() : FallbackEditor.getValue(); },
 
   setValue(value) {
     if (monacoEditor) {
@@ -990,15 +959,9 @@ const Editor = {
     FallbackEditor.focus();
   },
 
-  focus() {
-    if (monacoEditor) monacoEditor.focus();
-    else FallbackEditor.focus();
-  },
+  focus() { if (monacoEditor) monacoEditor.focus(); else FallbackEditor.focus(); },
 
-  layout() {
-    if (monacoEditor) monacoEditor.layout();
-    else FallbackEditor.layout();
-  },
+  layout() { if (monacoEditor) monacoEditor.layout(); else FallbackEditor.layout(); },
 };
 
 /* ------------------------------------------------------------------ tabs */
@@ -1006,7 +969,7 @@ const Editor = {
 let tabSeq = 0;
 
 function activeTab() {
-  return state.tabs.find((t) => t.id === state.activeTabId) || null;
+  return state.tabs.find((tab) => tab.id === state.activeTabId) || null;
 }
 
 function addTab({ name, path = null, content = '' }) {
@@ -1018,7 +981,7 @@ function addTab({ name, path = null, content = '' }) {
 }
 
 function closeTab(id) {
-  const index = state.tabs.findIndex((t) => t.id === id);
+  const index = state.tabs.findIndex((tab) => tab.id === id);
   if (index < 0) return;
   const [tab] = state.tabs.splice(index, 1);
   if (tab.model && monaco) tab.model.dispose();
@@ -1052,13 +1015,10 @@ function setActiveTab(id) {
 }
 
 function markDirty(tab) {
-  if (!tab) return;
-  const wasDirty = tab.dirty;
+  if (!tab || tab.dirty) return;
   tab.dirty = true;
-  if (!wasDirty) {
-    dom.statusFile.textContent = `${tab.name} •`;
-    renderTabs();
-  }
+  dom.statusFile.textContent = `${tab.name} •`;
+  renderTabs();
 }
 
 function renderTabs() {
@@ -1087,15 +1047,27 @@ function syncActiveContent() {
   tab.content = monacoEditor ? monacoEditor.getValue() : FallbackEditor.getValue();
 }
 
-/* ----------------------------------------------------------- status bar */
+/* --------------------------------------------------------- status / core */
 
 function setAttached(attached, message) {
   state.attached = Boolean(attached);
   dom.stStatus.textContent = state.attached ? 'Status: Attached' : 'Status: Not Attached';
   dom.stStatus.classList.toggle('status-badge--on', state.attached);
   dom.stStatus.classList.toggle('status-badge--off', !state.attached);
-  dom.sideTarget.textContent = state.attached && state.attachPid ? `pid ${state.attachPid}` : '—';
+  dom.btnAttach.classList.toggle('is-on', state.attached);
+  dom.btnAttach.querySelector('.action__text').textContent = state.attached ? 'Detach' : 'Attach';
   if (message) setMessage(message);
+}
+
+function setClients(clients) {
+  state.clients = Array.isArray(clients) ? clients : [];
+  const names = state.clients.map((client) => client.name || `pid ${client.pid}`);
+  dom.stClients.textContent = `clients: ${state.clients.length}`;
+  dom.stClients.classList.toggle('is-on', state.clients.length > 0);
+  dom.stClients.title = names.join(', ');
+  dom.sideClients.textContent = String(state.clients.length);
+  dom.sideClients.classList.toggle('is-on', state.clients.length > 0);
+  dom.sideClients.title = names.join(', ');
 }
 
 function setMessage(text) {
@@ -1116,8 +1088,21 @@ function updatePosition() {
 function renderStatus() {
   dom.stEngine.textContent = state.engine;
   dom.sideEngine.textContent = state.engine;
-  dom.sideLua.textContent = state.luaAvailable ? 'ready' : 'not found';
+  const core = state.core;
+  const coreName = core.corePath
+    ? core.corePath.split(/[\\/]/).pop()
+    : (core.dllPath ? core.dllPath.split(/[\\/]/).pop() : (core.exePath ? core.exePath.split(/[\\/]/).pop() : 'not found'));
+  dom.sideCore.textContent = coreName;
+  dom.sideCore.classList.toggle('is-on', Boolean(core.ready));
+  dom.sideMode.textContent = core.ready ? (core.mode === 'native' ? 'native dll' : `http :${core.port}`) : 'offline';
+  dom.sideMode.classList.toggle('is-on', Boolean(core.ready));
   if (state.appInfo) dom.appVersion.textContent = `v${state.appInfo.version}`;
+}
+
+function refreshCoreInfo() {
+  return window.pulse.xenoInfo()
+    .then((info) => { state.core = Object.assign(state.core, info); renderStatus(); return info; })
+    .catch(() => state.core);
 }
 
 /* ---------------------------------------------------------------- toast */
@@ -1135,7 +1120,34 @@ function hideToast() {
   dom.toast.hidden = true;
 }
 
-/* ------------------------------------------------------------ execution */
+/* ------------------------------------------------------- core: attach --- */
+
+async function attach() {
+  if (state.attached) {
+    await window.pulse.detach();
+    setAttached(false, 'detached');
+    setClients([]);
+    return;
+  }
+
+  setMessage('attaching to the C++ core…');
+  const result = await window.pulse.attach();
+
+  if (!result || !result.ok) {
+    const reason = (result && result.error) || 'attach failed';
+    setAttached(false, `not attached · ${reason}`);
+    showToast('attach failed', `${reason}\n\nPut Xeno.dll / Xeno.exe into Xeno\\bin (see Xeno\\README.md).`);
+    return;
+  }
+
+  setAttached(true, result.mode === 'native'
+    ? `core loaded in-process · ${(result.clients || []).length} client(s)`
+    : `core ready · ${(result.clients || []).length} client(s)`);
+  setClients(result.clients || []);
+  await refreshCoreInfo();
+}
+
+/* ------------------------------------------------------ core: execute --- */
 
 async function execute() {
   if (state.busy) return;
@@ -1150,25 +1162,36 @@ async function execute() {
 
   state.busy = true;
   state.output = [];
-  state.runId = null;
   setBusyUi(true);
-  setMessage(`executing ${tab.name}…`);
-  showToast(`running · ${tab.name}`, '');
+  setMessage(state.attached ? 'sending to the core…' : 'running locally…');
+  showToast(state.attached ? 'core · execute' : `local lua · ${tab.name}`, '');
 
-  const payload = tab.path && !tab.dirty
-    ? { runner: RUNNER, filePath: tab.path, keepFile: true }
-    : { runner: RUNNER, code: tab.content };
+  const payload = {
+    code: tab.content,
+    filePath: tab.path && !tab.dirty ? tab.path : null,
+    scriptName: tab.name,
+    chunkName: 'Pulse',
+  };
 
   try {
-    const result = await window.pulse.run(payload);
-    state.runId = result.runId;
-    if (result.error) {
+    const result = await window.pulse.execute(payload);
+
+    if (result.engine === 'xeno') {
+      if (result.ok) {
+        setMessage(`sent to ${result.targets.length} client(s)`);
+        showToast('core · sent', `delivered to: ${result.targets.join(', ')}`);
+      } else {
+        setMessage(result.error || 'execution failed');
+        showToast('core · error', result.error || 'unknown error');
+      }
+    } else if (result.error) {
       setMessage(result.error);
       showToast('error', result.error);
     } else {
       setMessage(`exit ${result.exitCode} · ${result.duration} ms`);
-      showToast(`exit ${result.exitCode} · ${result.duration} ms`, state.output.join(''));
+      showToast(`exit ${result.exitCode} · ${result.duration} ms`, state.output.join('') || '(no output)');
     }
+
     await window.pulse.setProgress(1);
     setTimeout(() => window.pulse.setProgress(-1), 600);
   } catch (error) {
@@ -1181,47 +1204,10 @@ async function execute() {
   }
 }
 
-async function stopExecution() {
-  await window.pulse.cancel(state.runId || undefined);
-  setMessage('stopped');
-  state.busy = false;
-  setBusyUi(false);
-}
-
 function setBusyUi(busy) {
   const button = $('btn-execute');
   button.classList.toggle('is-busy', busy);
   button.querySelector('.action__text').textContent = busy ? 'Running…' : 'Execute';
-}
-
-/* ---------------------------------------------------------------- attach */
-
-async function attach() {
-  if (state.attached) {
-    await window.pulse.detach();
-    state.attachPid = null;
-    setAttached(false, 'detached');
-    $('btn-attach').querySelector('.action__text').textContent = 'Attach';
-    return;
-  }
-
-  setMessage('looking for the Roblox process…');
-  const found = await window.pulse.findRoblox();
-
-  if (!found || !found.ok || !found.pids || !found.pids.length) {
-    setAttached(false, found && found.error ? `not attached · ${found.error}` : 'not attached · Roblox process not found');
-    return;
-  }
-
-  const pid = found.pids[0];
-  const result = await window.pulse.attach({ mode: 'process', pid });
-  if (result.ok) {
-    state.attachPid = pid;
-    setAttached(true, `attached to pid ${pid}`);
-    $('btn-attach').querySelector('.action__text').textContent = 'Detach';
-  } else {
-    setAttached(false, `not attached · ${result.error || 'attach failed'}`);
-  }
 }
 
 /* ----------------------------------------------------------------- files */
@@ -1229,13 +1215,8 @@ async function attach() {
 async function openFile() {
   const result = await window.pulse.openFile();
   if (!result || result.canceled) { setMessage('open file cancelled'); return; }
-
   result.files.forEach((file) => {
-    if (file.error) {
-      setMessage(`${file.name}: ${file.error}`);
-      showToast('open failed', `${file.name}: ${file.error}`);
-      return;
-    }
+    if (file.error) { showToast('open failed', `${file.name}: ${file.error}`); return; }
     addTab({ name: file.name, path: file.path, content: file.content });
     setMessage(`opened ${file.path}`);
   });
@@ -1261,12 +1242,9 @@ async function saveFile() {
 function renderHub() {
   const query = state.filter.trim().toLowerCase();
   const list = SCRIPTS.filter((script) =>
-    !query ||
-    script.name.toLowerCase().includes(query) ||
-    script.tag.toLowerCase().includes(query));
+    !query || script.name.toLowerCase().includes(query) || script.tag.toLowerCase().includes(query));
 
   dom.hubList.innerHTML = '';
-
   if (!list.length) {
     const empty = document.createElement('div');
     empty.className = 'hub__empty';
@@ -1293,7 +1271,6 @@ function renderHub() {
       dom.hubList.querySelectorAll('.script').forEach((el) => el.classList.remove('is-active'));
       item.classList.add('is-active');
     });
-
     dom.hubList.appendChild(item);
   });
 
@@ -1303,19 +1280,18 @@ function renderHub() {
 function loadScript(script) {
   const tab = activeTab();
 
-  // An untouched buffer is simply replaced, otherwise the script opens in a
-  // new tab so the code you are working on is never lost.
+  // An untouched buffer is replaced, otherwise the script opens in a new tab
+  // so the code you are working on is never lost.
   if (tab && !tab.dirty && !tab.path) {
     tab.name = `${script.id}.lua`;
     tab.content = script.code;
     if (monacoEditor && tab.model) tab.model.setValue(script.code);
     else FallbackEditor.setValue(script.code);
-    if (monacoEditor) monacoEditor.setPosition({ lineNumber: 1, column: 1 });
   } else {
     addTab({ name: `${script.id}.lua`, content: script.code });
-    if (monacoEditor) monacoEditor.setPosition({ lineNumber: 1, column: 1 });
   }
 
+  if (monacoEditor) monacoEditor.setPosition({ lineNumber: 1, column: 1 });
   dom.statusFile.textContent = `${script.id}.lua`;
   renderTabs();
   Editor.focus();
@@ -1334,11 +1310,14 @@ function toggleHub(force) {
 
 const WELCOME =
 `--[[
-    PULSE  -  Lua executor
+    PULSE  -  Lua executor for the Xeno C++ core
     --------------------------------------------------------------
-    Ctrl+Enter  execute      Ctrl+K   clear
-    Ctrl+O      open file    Ctrl+S   save
-    Ctrl+B      attach       Ctrl+H   script hub
+    Attach    loads Xeno.dll (native) or starts the core module
+    Execute   sends the buffer to the core, or runs it with the
+              local Lua interpreter when no core is attached
+    --------------------------------------------------------------
+    Ctrl+Enter  execute     Ctrl+K  clear     Ctrl+B  attach
+    Ctrl+O      open file   Ctrl+S  save      Ctrl+H  script hub
     --------------------------------------------------------------
     Pick a script in the Script Hub on the right, or write your own.
 ]]
@@ -1349,14 +1328,10 @@ local player  = Players.LocalPlayer
 print("[Pulse] ready - " .. tostring(player and player.Name or "no player"))
 `;
 
-async function initRunnerInfo() {
+async function initLocalLua() {
   const runners = await window.pulse.listRunners().catch(() => []);
-  const lua = runners.find((runner) => runner.id === RUNNER);
+  const lua = runners.find((runner) => runner.id === 'lua');
   state.luaAvailable = Boolean(lua && lua.available);
-  renderStatus();
-  if (!state.luaAvailable) {
-    setMessage('lua interpreter not found — scripts can be edited but not executed');
-  }
 }
 
 function bindUi() {
@@ -1373,7 +1348,6 @@ function bindUi() {
   });
   $('btn-attach').addEventListener('click', attach);
   $('btn-open').addEventListener('click', openFile);
-  $('btn-save').addEventListener('click', saveFile);
   $('btn-hub').addEventListener('click', () => toggleHub());
 
   $('hub-close').addEventListener('click', () => toggleHub(false));
@@ -1381,8 +1355,8 @@ function bindUi() {
     state.filter = event.target.value;
     renderHub();
   });
-
   $('toast-close').addEventListener('click', hideToast);
+  dom.stClients.addEventListener('click', () => window.pulse.xenoClients().then((info) => setClients(info.clients || [])));
 
   window.addEventListener('keydown', (event) => {
     const mod = event.ctrlKey || event.metaKey;
@@ -1395,7 +1369,6 @@ function bindUi() {
     else if (key === 'o') { event.preventDefault(); openFile(); }
     else if (key === 's') { event.preventDefault(); saveFile(); }
     else if (key === 'h') { event.preventDefault(); toggleHub(); }
-    else if (key === 'c' && event.shiftKey) { event.preventDefault(); stopExecution(); }
   });
 
   window.addEventListener('resize', () => Editor.layout());
@@ -1413,14 +1386,18 @@ function bindIpc() {
   window.pulse.on('pulse:attach-status', (info) => {
     if (!info) return;
     if (info.connected) {
-      state.attachPid = state.attachPid || (info.mode === 'process' ? Number(String(info.target || '').replace(/[^0-9]/g, '')) || null : null);
       setAttached(true, `attached${info.target ? ` · ${info.target}` : ''}`);
-      $('btn-attach').querySelector('.action__text').textContent = 'Detach';
+      if (Array.isArray(info.clients)) setClients(info.clients);
+      refreshCoreInfo();
     } else {
-      state.attachPid = null;
       setAttached(false, `not attached · ${info.reason || 'detached'}`);
-      $('btn-attach').querySelector('.action__text').textContent = 'Attach';
+      setClients([]);
+      refreshCoreInfo();
     }
+  });
+
+  window.pulse.on('pulse:clients', (payload) => {
+    if (payload) setClients(payload.clients || []);
   });
 
   window.pulse.on('pulse:window-state', (info) => {
@@ -1439,6 +1416,7 @@ async function boot() {
 
   setBusyUi(false);
   setAttached(false);
+  setClients([]);
   toggleHub(true);
   addTab({ name: 'script.lua', content: WELCOME });
   renderHub();
@@ -1446,11 +1424,20 @@ async function boot() {
   try {
     state.appInfo = await window.pulse.appInfo();
     renderStatus();
-  } catch (error) {
+  } catch (_) {
     setMessage('cannot read app info');
   }
 
-  await initRunnerInfo();
+  await initLocalLua();
+  const core = await refreshCoreInfo();
+  if (!core.available) {
+    setMessage('core not found — put Xeno.dll / Xeno.exe into Xeno\\bin');
+  } else if (core.ready) {
+    setAttached(true, `core ready · ${core.mode}`);
+    setClients(core.clients || []);
+  } else {
+    setMessage(core.dllPath ? 'core ready — press Attach' : 'core executable ready — press Attach');
+  }
 
   if (state.appInfo && state.appInfo.monacoPath) {
     try {
@@ -1461,7 +1448,7 @@ async function boot() {
         tab.model = monaco.editor.createModel(tab.content, LANGUAGE);
         monacoEditor.setModel(tab.model);
       }
-      setMessage(state.luaAvailable ? 'monaco ready · lua ready' : 'monaco ready · lua not found');
+      setMessage(state.attached ? 'monaco ready · core attached' : 'monaco ready');
     } catch (error) {
       if (monacoEditor) {
         try { monacoEditor.dispose(); } catch (_) { /* already gone */ }
@@ -1472,8 +1459,6 @@ async function boot() {
       state.engine = 'pulse-core';
       setMessage(`monaco unavailable — built-in ${state.engine} editor active`);
     }
-  } else {
-    setMessage('monaco bundle not found — built-in editor active');
   }
 
   dom.boot.hidden = true;

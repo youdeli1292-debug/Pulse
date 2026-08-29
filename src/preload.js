@@ -30,6 +30,20 @@ contextBridge.exposeInMainWorld('pulse', {
   showInFolder: safe('pulse:show-in-folder'),
   openWorkspace: safe('pulse:open-workspace'),
 
+  /* ---------------------------------------------------- C++ core (Xeno) */
+  /** Information about the compiled core module and the current bridge mode. */
+  xenoInfo: safe('pulse:xeno-info'),
+  /** Attach / detach: loads Xeno.dll (native) or spawns the core executable. */
+  attach: safe('pulse:attach'),
+  detach: safe('pulse:detach'),
+  /** Refresh the list of Roblox clients known to the core. */
+  xenoClients: safe('pulse:xeno-clients'),
+  /** Luau syntax check performed by the core ("success" or the error text). */
+  xenoCompilable: safe('pulse:xeno-compilable'),
+  /** Execute: core when attached, local Lua interpreter otherwise. */
+  execute: safe('pulse:execute'),
+  findRoblox: safe('pulse:find-roblox'),
+
   /* ------------------------------------------------------------ execution */
   listRunners: safe('pulse:list-runners'),
   listUtilities: safe('pulse:list-utilities'),
@@ -39,11 +53,8 @@ contextBridge.exposeInMainWorld('pulse', {
   running: safe('pulse:running'),
 
   /* ------------------------------------------------------- attach / bridge */
-  attach: safe('pulse:attach'),
   attachSend: safe('pulse:attach-send'),
-  detach: safe('pulse:detach'),
   probe: safe('pulse:probe'),
-  findRoblox: safe('pulse:find-roblox'),
   startBridge: safe('pulse:start-bridge'),
   stopBridge: safe('pulse:stop-bridge'),
 

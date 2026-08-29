@@ -19,7 +19,7 @@
       'hero.title1': 'Code at the speed',
       'hero.title2': 'of a heartbeat',
       'hero.lead':
-        'Pulse is a frameless Lua executor for Roblox: Monaco editor locked to Lua syntax, one-keystroke execution, a built-in Script Hub of ready-to-run scripts and a live status bar that shows whether you are attached to the game process.',
+        'Pulse is a frameless Lua executor for Roblox built around the Xeno C++ core: Monaco locked to Lua syntax, one-keystroke execution straight into the game, a built-in Script Hub of ready-to-run scripts and a live status bar that shows whether the core is attached.',
       'hero.download': 'Download Pulse',
       'hero.allreleases': 'All releases',
       'hero.meta1': 'portable .exe',
@@ -48,9 +48,9 @@
       'feat.monaco.l3': 'built-in fallback editor',
       'feat.attach.title': 'Attach & Status',
       'feat.attach.text':
-        'Press Attach and Pulse looks for the Roblox process, binds to it and flips the status bar to a green "Status: Attached". The badge turns red the moment the game closes.',
-      'feat.attach.l1': 'automatic Roblox process lookup',
-      'feat.attach.l2': 'live PID watcher',
+        'Press Attach and Pulse boots the Xeno C++ core: it loads Xeno.dll straight into the app (N-API FFI), or spawns PulseCore.exe with child_process, or binds to a core that is already running on port 19283. The status bar flips to a green "Status: Attached" and turns red the moment the core goes away.',
+      'feat.attach.l1': 'Xeno.dll loaded in-process (N-API FFI)',
+      'feat.attach.l2': 'PulseCore.exe / Xeno.exe via child_process',
       'feat.attach.l3': 'green / red status badge',
       'feat.hub.title': 'Script Hub',
       'feat.hub.text': 'A built-in catalogue of ready-to-run Lua scripts - Fly, AimBot, ESP, SpeedHack, Infinite Yield, Noclip, Anti-AFK. One click loads the source straight into the editor, and the search box filters the list instantly.',
@@ -74,7 +74,7 @@
         'Copy the .exe to a folder you own (Desktop, D:\\Tools, a USB stick) and double-click it. Windows SmartScreen may ask for confirmation on the very first launch — press More info → Run anyway.',
       'inst.s3.title': 'Run your first script',
       'inst.s3.text':
-        'Press Ctrl+Enter to execute the Lua buffer, Ctrl+H to open the Script Hub, pick a script — and Ctrl+B to attach to the Roblox process.',
+        'Press Ctrl+Enter to execute the Lua buffer, Ctrl+H to open the Script Hub, pick a script — and Ctrl+B to attach the Xeno core.',
 
       'keys.run': 'Execute',
       'keys.open': 'Open file',
@@ -102,7 +102,7 @@
         'No. The Monaco bundle, fonts and theme are packaged inside the executable; nothing is loaded from a CDN at runtime.',
       'faq.q4': 'How does Attach work?',
       'faq.a4':
-        'Pulse scans the process list (tasklist on Windows, ps on Unix) for RobloxPlayer / RobloxStudio and binds to the PID it finds. The status bar switches between "Status: Not Attached" (red) and "Status: Attached" (green) and follows the process until it exits.',
+        'Attach tries three routes: the compiled Xeno.dll is loaded straight into the app through the Node-API bridge, otherwise PulseCore.exe is launched with child_process, otherwise Pulse binds to a core that already listens on 127.0.0.1:19283. Clients are reported by the core itself, and the status bar switches between "Status: Not Attached" (red) and "Status: Attached" (green).',
       'faq.q5': 'Monaco did not load — now what?',
       'faq.a5':
         'Pulse falls back to its own editor with line numbers and syntax highlighting, so the app stays usable. Check the console tab for the exact reason.',
@@ -122,7 +122,7 @@
       'hero.title1': 'Пиши код со скоростью',
       'hero.title2': 'сердечного ритма',
       'hero.lead':
-        'Pulse — безрамочный Lua-экзекутор для Roblox: редактор Monaco, жёстко настроенный на синтаксис Lua, запуск скрипта одной клавишей, встроенный Script Hub с готовыми скриптами и статус-бар, который показывает, подключены ли вы к процессу игры.',
+        'Pulse — безрамочный Lua-экзекутор для Roblox на базе C++-ядра Xeno: редактор Monaco, жёстко настроенный на синтаксис Lua, отправка скрипта в игру одной клавишей, встроенный Script Hub с готовыми скриптами и статус-бар, который показывает, подключено ли ядро.',
       'hero.download': 'Скачать Pulse',
       'hero.allreleases': 'Все релизы',
       'hero.meta1': 'portable .exe',
@@ -151,9 +151,9 @@
       'feat.monaco.l3': 'встроенный резервный редактор',
       'feat.attach.title': 'Attach и статус',
       'feat.attach.text':
-        'Нажмите Attach — Pulse найдёт процесс Roblox, привяжется к нему и переключит статус-бар на зелёный «Status: Attached». Как только игра закроется, бейдж снова станет красным.',
-      'feat.attach.l1': 'автопоиск процесса Roblox',
-      'feat.attach.l2': 'живое наблюдение за PID',
+        'Нажмите Attach — и Pulse поднимет C++-ядро Xeno: загрузит Xeno.dll прямо в приложение (N-API FFI), либо запустит PulseCore.exe через child_process, либо подключится к уже работающему ядру на порту 19283. Статус-бар станет зелёным «Status: Attached» и снова покраснеет, как только ядро отключится.',
+      'feat.attach.l1': 'Xeno.dll загружается в процесс (N-API FFI)',
+      'feat.attach.l2': 'PulseCore.exe / Xeno.exe через child_process',
       'feat.attach.l3': 'зелёный / красный индикатор',
       'feat.hub.title': 'Script Hub',
       'feat.hub.text': 'Встроенный каталог готовых Lua-скриптов - Fly, AimBot, ESP, SpeedHack, Infinite Yield, Noclip, Anti-AFK. Один клик загружает исходник прямо в редактор, а строка поиска мгновенно фильтрует список.',
@@ -177,7 +177,7 @@
         'Скопируйте .exe в любую свою папку (рабочий стол, D:\\Tools, флешку) и дважды щёлкните. При первом запуске Windows SmartScreen может спросить подтверждение — нажмите «Подробнее → Выполнить в любом случае».',
       'inst.s3.title': 'Запустите первый скрипт',
       'inst.s3.text':
-        'Нажмите Ctrl+Enter, чтобы выполнить Lua-код, Ctrl+H — чтобы открыть Script Hub и выбрать скрипт, Ctrl+B — чтобы подключиться к процессу Roblox.',
+        'Нажмите Ctrl+Enter, чтобы выполнить Lua-код, Ctrl+H — чтобы открыть Script Hub и выбрать скрипт, Ctrl+B — чтобы подключить ядро Xeno.',
 
       'keys.run': 'Выполнить',
       'keys.open': 'Открыть файл',
@@ -205,7 +205,7 @@
         'Нет. Сборка Monaco, шрифты и тема упакованы внутрь исполняемого файла — ничего не загружается из CDN во время работы.',
       'faq.q4': 'Как работает Attach?',
       'faq.a4':
-        'Pulse просматривает список процессов (tasklist в Windows, ps в Unix) на предмет RobloxPlayer / RobloxStudio и привязывается к найденному PID. Статус-бар переключается между «Status: Not Attached» (красный) и «Status: Attached» (зелёный) и следит за процессом до его завершения.',
+        'Attach пробует три маршрута: скомпилированная Xeno.dll загружается в приложение через Node-API мост, иначе запускается PulseCore.exe через child_process, иначе Pulse подключается к ядру, которое уже слушает 127.0.0.1:19283. Клиентов сообщает само ядро, а статус-бар переключается между «Status: Not Attached» (красный) и «Status: Attached» (зелёный).',
       'faq.q5': 'Monaco не загрузился — что делать?',
       'faq.a5':
         'Pulse автоматически переключится на собственный редактор с номерами строк и подсветкой, приложение останется рабочим. Точную причину видно во вкладке консоли.',
