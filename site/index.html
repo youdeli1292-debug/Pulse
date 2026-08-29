@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pulse — advanced code editor &amp; extension manager</title>
+<meta name="description" content="Pulse is a frameless dark-cyberpunk desktop code editor with Monaco integration, one-keystroke script execution and a live process attach bridge." />
+<meta name="theme-color" content="#0a0713" />
+<meta property="og:title" content="Pulse — advanced code editor &amp; extension manager" />
+<meta property="og:description" content="Frameless neon editor · Node / Python / PowerShell / CMD / Bash runners · live process attach bridge." />
+<meta property="og:image" content="assets/og-image.jpg" />
+<meta property="og:type" content="website" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M2 32h11l5-14 8 28 7-21 5 7h24' fill='none' stroke='%23a855f7' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+
+<div class="grid-bg" aria-hidden="true"></div>
+
+<!-- ======================================================= navigation === -->
+<header class="nav">
+  <a class="brand" href="#top">
+    <span class="brand__mark" aria-hidden="true">
+      <svg viewBox="0 0 64 64" width="22" height="22">
+        <path d="M2 32h11l5-14 8 28 7-21 5 7h24" fill="none" stroke="currentColor"
+              stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </span>
+    <span class="brand__name">PULSE</span>
+  </a>
+
+  <nav class="nav__links">
+    <a href="#features" data-i18n="nav.features">Features</a>
+    <a href="#preview" data-i18n="nav.preview">Preview</a>
+    <a href="#install" data-i18n="nav.install">Install</a>
+    <a href="#faq" data-i18n="nav.faq">FAQ</a>
+    <a class="nav__ghost" href="https://github.com/youdeli1292-debug/Pulse" target="_blank" rel="noopener">GitHub</a>
+  </nav>
+
+  <button class="lang" id="lang-toggle" type="button" aria-label="Switch language">
+    <span id="lang-label">RU</span>
+  </button>
+</header>
+
+<!-- ============================================================== hero === -->
+<section class="hero" id="top">
+  <div class="hero__glow" aria-hidden="true"></div>
+
+  <div class="hero__inner">
+    <span class="tag">
+      <span class="tag__dot"></span>
+      <span data-i18n="hero.tag">v1.0.0 · Windows portable · open source</span>
+    </span>
+
+    <h1 class="hero__title">
+      <span data-i18n="hero.title1">Code at the speed</span><br />
+      <span class="hero__accent" data-i18n="hero.title2">of a heartbeat</span>
+    </h1>
+
+    <p class="hero__lead" data-i18n="hero.lead">
+      Pulse is a frameless desktop code editor with a Monaco core, one-keystroke
+      script execution and a live attach bridge to any process or TCP endpoint.
+      Dark cyberpunk UI, zero setup, single portable executable.
+    </p>
+
+    <div class="hero__cta">
+      <a class="btn btn--primary" id="download-btn"
+         href="https://github.com/youdeli1292-debug/Pulse/releases/latest/download/Pulse-1.0.0-x64-portable.exe">
+        <span class="btn__icon" aria-hidden="true">↓</span>
+        <span data-i18n="hero.download">Download Pulse</span>
+      </a>
+      <a class="btn btn--ghost" href="https://github.com/youdeli1292-debug/Pulse/releases" target="_blank" rel="noopener">
+        <span data-i18n="hero.allreleases">All releases</span>
+      </a>
+    </div>
+
+    <div class="hero__meta">
+      <span><b>~85 MB</b> <span data-i18n="hero.meta1">portable .exe</span></span>
+      <span><b>Windows 10/11</b> <span data-i18n="hero.meta2">x64 · no admin rights</span></span>
+      <span><b>MIT</b> <span data-i18n="hero.meta3">license</span></span>
+    </div>
+
+    <!-- ------------------------------ app window mockup ----------------- -->
+    <div class="window" id="preview" aria-hidden="true">
+      <div class="window__bar">
+        <span class="window__dots"><i></i><i></i><i></i></span>
+        <span class="window__title">Pulse — quick-start.js</span>
+        <span class="window__badge">800 × 500</span>
+      </div>
+      <div class="window__body">
+        <aside class="window__side">
+          <div class="ws-label">actions</div>
+          <div class="ws-btn ws-btn--primary"><b>▶</b> Execute</div>
+          <div class="ws-btn"><b>⌫</b> Clear</div>
+          <div class="ws-btn"><b>⛓</b> Attach / Connect</div>
+          <div class="ws-btn"><b>⧉</b> Open File</div>
+          <div class="ws-label">runner</div>
+          <div class="ws-select">Node.js ▾</div>
+          <div class="ws-label">utilities</div>
+          <div class="ws-util">tasklist</div>
+          <div class="ws-util">ipconfig</div>
+          <div class="ws-util">netstat</div>
+        </aside>
+
+        <div class="window__main">
+          <div class="window__tabs">
+            <span class="wt is-active">quick-start.js</span>
+            <span class="wt">bridge.py</span>
+          </div>
+          <pre class="window__code"><code><span class="c">// PULSE ▸ quick start</span>
+<span class="k">const</span> pulse = { engine: <span class="s">'Pulse'</span>, version: <span class="s">'1.0.0'</span> };
+
+<span class="k">function</span> <span class="f">heartbeat</span>(times = <span class="n">5</span>) {
+  <span class="k">for</span> (<span class="k">let</span> i = <span class="n">1</span>; i &lt;= times; i += <span class="n">1</span>) {
+    <span class="b">process</span>.stdout.<span class="f">write</span>(<span class="s">`♥ beat ${i}\n`</span>);
+  }
+}
+
+<span class="f">heartbeat</span>();
+<span class="b">console</span>.<span class="f">log</span>(<span class="s">'Pulse is online'</span>, pulse.version);</code></pre>
+          <div class="window__console">
+            <div class="wc-head"><span>console</span><span class="wc-meta">exit 0 · 31 ms</span></div>
+            <div class="wc-body">
+              <div class="wc-line wc-sys">12:04:01.120 ▸ starting Node.js</div>
+              <div class="wc-line">♥ beat 1</div>
+              <div class="wc-line">♥ beat 2</div>
+              <div class="wc-line">♥ beat 3</div>
+              <div class="wc-line">♥ beat 4</div>
+              <div class="wc-line">♥ beat 5</div>
+              <div class="wc-line">Pulse is online 1.0.0</div>
+              <div class="wc-line wc-sys">12:04:01.151 ▸ finished with exit code 0 in 31 ms</div>
+            </div>
+          </div>
+          <div class="window__status">
+            <span>Ln 14, Col 44</span><span>javascript</span><span>monaco</span>
+            <span class="grow">ready</span><span>win32/x64</span><span>12:04:01</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================================================== features === -->
+<section class="section" id="features">
+  <div class="wrap">
+    <h2 class="section__title" data-i18n="feat.title">Everything you need. Nothing you don't.</h2>
+    <p class="section__lead" data-i18n="feat.lead">
+      Pulse ships as one portable executable: no installers, no registry, no admin rights.
+    </p>
+
+    <div class="cards">
+      <article class="card">
+        <div class="card__icon">⚡</div>
+        <h3 data-i18n="feat.fast.title">Fast Execution</h3>
+        <p data-i18n="feat.fast.text">
+          Ctrl+Enter sends the buffer to Node.js, Python, PowerShell, CMD or Bash and streams
+          stdout / stderr straight into the console with timestamps and exit codes. Long runs
+          can be cancelled at any moment.
+        </p>
+        <ul class="card__list">
+          <li data-i18n="feat.fast.l1">live output streaming</li>
+          <li data-i18n="feat.fast.l2">exit code + duration report</li>
+          <li data-i18n="feat.fast.l3">one-click system utilities</li>
+        </ul>
+      </article>
+
+      <article class="card card--accent">
+        <div class="card__icon">◈</div>
+        <h3 data-i18n="feat.ui.title">Custom UI</h3>
+        <p data-i18n="feat.ui.text">
+          A fully frameless 800 × 500 neon-violet shell drawn by hand: custom title bar,
+          drag region, window controls, tabs, gutter, scanline overlay and a dark cyberpunk
+          palette that stays readable for hours.
+        </p>
+        <ul class="card__list">
+          <li data-i18n="feat.ui.l1">frameless window + custom chrome</li>
+          <li data-i18n="feat.ui.l2">tabs, workspace explorer, status bar</li>
+          <li data-i18n="feat.ui.l3">Attach / Connect side panel</li>
+        </ul>
+      </article>
+
+      <article class="card">
+        <div class="card__icon">⌨</div>
+        <h3 data-i18n="feat.monaco.title">Monaco Editor Integration</h3>
+        <p data-i18n="feat.monaco.text">
+          The same editor engine that powers VS Code: syntax highlighting for 10+ languages,
+          bracket colourisation, suggestions, multi-cursor and a custom <i>pulse-cyber</i>
+          theme — bundled offline inside the app.
+        </p>
+        <ul class="card__list">
+          <li data-i18n="feat.monaco.l1">offline AMD bundle, no CDN</li>
+          <li data-i18n="feat.monaco.l2">custom neon theme &amp; ligatures</li>
+          <li data-i18n="feat.monaco.l3">built-in fallback editor</li>
+        </ul>
+      </article>
+
+      <article class="card">
+        <div class="card__icon">⛓</div>
+        <h3 data-i18n="feat.attach.title">Attach Bridge</h3>
+        <p data-i18n="feat.attach.text">
+          Connect the editor to any TCP endpoint, watch a running process by PID, probe a
+          port or spin up a local echo bridge — the traffic lands in the console in real time.
+        </p>
+        <ul class="card__list">
+          <li data-i18n="feat.attach.l1">TCP client with raw / hex send</li>
+          <li data-i18n="feat.attach.l2">PID watcher (tasklist / ps)</li>
+          <li data-i18n="feat.attach.l3">port probe with RTT</li>
+        </ul>
+      </article>
+
+      <article class="card">
+        <div class="card__icon">⧉</div>
+        <h3 data-i18n="feat.files.title">Files &amp; Workspace</h3>
+        <p data-i18n="feat.files.text">
+          Open several files at once, keep them in tabs, save back to disk or into the Pulse
+          workspace folder, and jump between scripts straight from the sidebar.
+        </p>
+        <ul class="card__list">
+          <li data-i18n="feat.files.l1">multi-tab editing</li>
+          <li data-i18n="feat.files.l2">language auto-detection</li>
+          <li data-i18n="feat.files.l3">workspace file list</li>
+        </ul>
+      </article>
+
+      <article class="card">
+        <div class="card__icon">🛡</div>
+        <h3 data-i18n="feat.secure.title">Safe by Design</h3>
+        <p data-i18n="feat.secure.text">
+          The renderer runs with context isolation and without Node integration. Every
+          privileged action travels through an explicit IPC channel, and interpreters are
+          launched without a shell, so nothing can be injected into your system.
+        </p>
+        <ul class="card__list">
+          <li data-i18n="feat.secure.l1">contextIsolation + preload bridge</li>
+          <li data-i18n="feat.secure.l2">no shell string interpolation</li>
+          <li data-i18n="feat.secure.l3">whitelisted system utilities</li>
+        </ul>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- =========================================================== install === -->
+<section class="section section--alt" id="install">
+  <div class="wrap">
+    <h2 class="section__title" data-i18n="inst.title">Installation</h2>
+    <p class="section__lead" data-i18n="inst.lead">Three steps, about a minute, nothing to configure.</p>
+
+    <ol class="steps">
+      <li class="step">
+        <div class="step__num">1</div>
+        <div>
+          <h3 data-i18n="inst.s1.title">Download the portable build</h3>
+          <p data-i18n="inst.s1.text">
+            Grab <code>Pulse-1.0.0-x64-portable.exe</code> from the releases page. It is a
+            single self-contained file — Pulse leaves no traces in the registry.
+          </p>
+        </div>
+      </li>
+      <li class="step">
+        <div class="step__num">2</div>
+        <div>
+          <h3 data-i18n="inst.s2.title">Put it anywhere and run it</h3>
+          <p data-i18n="inst.s2.text">
+            Copy the .exe to a folder you own (Desktop, D:\Tools, a USB stick) and double-click
+            it. Windows SmartScreen may ask for confirmation on the very first launch — press
+            <b>More info → Run anyway</b>.
+          </p>
+        </div>
+      </li>
+      <li class="step">
+        <div class="step__num">3</div>
+        <div>
+          <h3 data-i18n="inst.s3.title">Run your first script</h3>
+          <p data-i18n="inst.s3.text">
+            Press <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to execute the buffer with the selected
+            runner, <kbd>Ctrl</kbd>+<kbd>O</kbd> to open a file and <kbd>Ctrl</kbd>+<kbd>B</kbd>
+            to open the Attach / Connect panel.
+          </p>
+        </div>
+      </li>
+    </ol>
+
+    <div class="shortcuts">
+      <div class="shortcut"><kbd>Ctrl</kbd><span>+</span><kbd>Enter</kbd><em data-i18n="keys.run">Execute</em></div>
+      <div class="shortcut"><kbd>Ctrl</kbd><span>+</span><kbd>O</kbd><em data-i18n="keys.open">Open file</em></div>
+      <div class="shortcut"><kbd>Ctrl</kbd><span>+</span><kbd>S</kbd><em data-i18n="keys.save">Save</em></div>
+      <div class="shortcut"><kbd>Ctrl</kbd><span>+</span><kbd>K</kbd><em data-i18n="keys.clear">Clear buffer</em></div>
+      <div class="shortcut"><kbd>Ctrl</kbd><span>+</span><kbd>B</kbd><em data-i18n="keys.attach">Attach panel</em></div>
+      <div class="shortcut"><kbd>F12</kbd><em data-i18n="keys.devtools">DevTools</em></div>
+    </div>
+
+    <div class="build-box">
+      <h3 data-i18n="inst.build.title">Building from source</h3>
+      <p data-i18n="inst.build.text">Node.js 18+ is required. Clone the repository and run:</p>
+      <div class="code-block">
+        <button class="copy" type="button" data-copy="cmd-build" data-i18n="ui.copy">copy</button>
+        <pre id="cmd-build">git clone https://github.com/youdeli1292-debug/Pulse.git
+cd Pulse
+npm install
+npm run dist</pre>
+      </div>
+      <p class="hint" data-i18n="inst.build.hint">
+        The finished portable executable appears in <code>dist/</code>.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- =============================================================== faq === -->
+<section class="section" id="faq">
+  <div class="wrap wrap--narrow">
+    <h2 class="section__title" data-i18n="faq.title">FAQ</h2>
+
+    <details class="faq">
+      <summary data-i18n="faq.q1">Do I need admin rights to run Pulse?</summary>
+      <p data-i18n="faq.a1">
+        No. The portable build requests the normal user level and writes only inside your
+        user profile (<code>%APPDATA%\pulse\workspace</code>).
+      </p>
+    </details>
+    <details class="faq">
+      <summary data-i18n="faq.q2">Which interpreters are supported?</summary>
+      <p data-i18n="faq.a2">
+        Node.js is bundled with the app. Python, PowerShell, CMD and Bash are detected on your
+        system at startup; missing runners are simply marked as unavailable.
+      </p>
+    </details>
+    <details class="faq">
+      <summary data-i18n="faq.q3">Does Pulse need an internet connection?</summary>
+      <p data-i18n="faq.a3">
+        No. The Monaco bundle, fonts and theme are packaged inside the executable; nothing is
+        loaded from a CDN at runtime.
+      </p>
+    </details>
+    <details class="faq">
+      <summary data-i18n="faq.q4">What is the Attach / Connect panel for?</summary>
+      <p data-i18n="faq.a4">
+        It turns Pulse into a small network client: connect to any TCP endpoint, send text,
+        code or hex payloads, watch a local process by PID, probe a port or start a local echo
+        bridge for testing.
+      </p>
+    </details>
+    <details class="faq">
+      <summary data-i18n="faq.q5">Monaco did not load — now what?</summary>
+      <p data-i18n="faq.a5">
+        Pulse falls back to its own editor with line numbers and syntax highlighting, so the
+        app stays usable. Check the console tab for the exact reason.
+      </p>
+    </details>
+  </div>
+</section>
+
+<!-- ============================================================ footer === -->
+<footer class="footer">
+  <div class="wrap footer__inner">
+    <div>
+      <div class="brand brand--footer">
+        <span class="brand__mark" aria-hidden="true">
+          <svg viewBox="0 0 64 64" width="20" height="20">
+            <path d="M2 32h11l5-14 8 28 7-21 5 7h24" fill="none" stroke="currentColor"
+                  stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        <span class="brand__name">PULSE</span>
+      </div>
+      <p class="footer__note" data-i18n="footer.note">
+        Built with Electron, Monaco and a lot of neon. MIT licensed.
+      </p>
+    </div>
+    <div class="footer__links">
+      <a href="https://github.com/youdeli1292-debug/Pulse" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/youdeli1292-debug/Pulse/releases" target="_blank" rel="noopener">Releases</a>
+      <a href="https://github.com/youdeli1292-debug/Pulse/issues" target="_blank" rel="noopener">Issues</a>
+    </div>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+</body>
+</html>

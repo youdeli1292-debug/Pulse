@@ -1,0 +1,96 @@
+{
+  "name": "pulse",
+  "productName": "Pulse",
+  "version": "1.0.0",
+  "description": "Pulse — advanced code editor and extension manager with a live execution bridge",
+  "main": "main.js",
+  "author": "youdeli1292",
+  "license": "MIT",
+  "private": true,
+  "homepage": "https://github.com/youdeli1292-debug/Pulse",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/youdeli1292-debug/Pulse.git"
+  },
+  "keywords": [
+    "electron",
+    "editor",
+    "monaco",
+    "cyberpunk",
+    "pulse"
+  ],
+  "scripts": {
+    "start": "electron .",
+    "postinstall": "electron-builder install-app-deps",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win --x64 --ia32",
+    "dist:win64": "electron-builder --win --x64",
+    "dist:dir": "electron-builder --dir"
+  },
+  "dependencies": {
+    "monaco-editor": "^0.56.0"
+  },
+  "devDependencies": {
+    "electron": "^44.0.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.pulse.editor",
+    "productName": "Pulse",
+    "copyright": "Copyright © 2026 Pulse",
+    "icon": "icon_pulse.ico",
+    "directories": {
+      "output": "dist",
+      "buildResources": "assets"
+    },
+    "files": [
+      "main.js",
+      "package.json",
+      "src/**/*",
+      "node_modules/**/*",
+      "!node_modules/*/{test,__tests__,tests,example,examples}/**",
+      "!**/*.map",
+      "!**/*.md"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/monaco-editor/**/*"
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "icon": "icon_pulse.ico",
+      "artifactName": "Pulse-${version}-${arch}-portable.${ext}",
+      "legalTrademarks": "Pulse"
+    },
+    "portable": {
+      "artifactName": "Pulse-${version}-${arch}-portable.${ext}",
+      "requestExecutionLevel": "user",
+      "unicode": true
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Pulse"
+    },
+    "mac": {
+      "icon": "icon_pulse.ico",
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.developer-tools"
+    },
+    "linux": {
+      "icon": "icon_pulse.ico",
+      "target": [
+        "AppImage"
+      ],
+      "category": "Development"
+    },
+    "compression": "maximum",
+    "removePackageScripts": true
+  }
+}
