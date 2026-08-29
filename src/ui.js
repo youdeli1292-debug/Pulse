@@ -1,28 +1,33 @@
 /* =========================================================================
-   Pulse — renderer (UI logic)
-   Works with the real Monaco editor when the AMD bundle is reachable
-   (node_modules/monaco-editor, unpacked next to app.asar when packaged) and
-   with the built-in Pulse editor otherwise. Both back ends expose the same
-   adapter API to the rest of the file.
+   Pulse — executor UI (renderer)
+
+   • Monaco is hard-wired to Lua, the built-in fallback editor is Lua-only too
+   • left column: Execute / Clear / Attach / Open File / Save / Script Hub
+   • right column: Script Hub — click a script to load it into the editor
+   • bottom: slim status bar with "Status: Not Attached" / "Status: Attached"
    ========================================================================= */
 
 'use strict';
 
 /* ------------------------------------------------------------------ state */
 
+const LANGUAGE = 'lua';            // the editor speaks Lua and nothing else
+const RUNNER = 'lua';
+
 const state = {
   tabs: [],
   activeTabId: null,
-  runner: 'node',
-  runners: [],
   busy: false,
   runId: null,
   attached: false,
-  attachMode: null,
-  bridge: { running: false, port: null },
-  wrap: true,
+  attachPid: null,
+  hubOpen: true,
+  filter: '',
+  luaAvailable: false,
   appInfo: null,
   engine: 'pulse-core',
+  output: [],
+  toastTimer: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -35,102 +40,671 @@ const dom = {
   gutter: $('gutter'),
   highlight: $('highlight').querySelector('code'),
   input: $('code'),
-  console: $('console'),
-  consoleMeta: $('console-meta'),
-  runnerSelect: $('runner-select'),
-  runnerMeta: $('runner-meta'),
-  utilities: $('utilities'),
-  filelist: $('filelist'),
-  attachPanel: $('attach-panel'),
+
+  hub: $('hub'),
+  hubList: $('hub-list'),
+  hubSearch: $('hub-search'),
+  hubCount: $('hub-count'),
+
+  toast: $('toast'),
+  toastTitle: $('toast-title'),
+  toastBody: $('toast-body'),
+
   statusFile: $('status-file'),
-  statusRunner: $('status-runner'),
   appVersion: $('app-version'),
-  attachDot: $('attach-dot'),
-  attachStatusText: $('attach-status-text'),
-  bridgeDot: document.getElementById('bridge-row').querySelector('.dot'),
-  bridgeText: $('bridge-text'),
-  st: {
-    pos: $('st-pos'),
-    lang: $('st-lang'),
-    engine: $('st-engine'),
-    message: $('st-message'),
-    mem: $('st-mem'),
-    platform: $('st-platform'),
-    time: $('st-time'),
-  },
+  sideEngine: $('side-engine'),
+  sideTarget: $('side-target'),
+  sideLua: $('side-lua'),
+
+  stStatus: $('st-status'),
+  stMessage: $('st-message'),
+  stPos: $('st-pos'),
+  stEngine: $('st-engine'),
 };
 
-/* --------------------------------------------------------------- fallback */
-/*  Pulse editor: textarea + highlighted overlay + line gutter.             */
+/* =========================================================================
+   Script Hub catalogue — ready-to-run Lua templates for the Roblox API.
+   These are self-contained demos for your own places / private servers:
+   no network calls, no data collection, everything is reversible.
+   ========================================================================= */
+
+const SCRIPTS = [
+  {
+    id: 'fly',
+    name: 'Fly Script',
+    tag: 'movement',
+    code:
+`--[[
+    Pulse - Fly Script
+    F       toggle flight
+    WASD    move      Space / LShift    up / down
+]]
+local Players           = game:GetService("Players")
+local RunService        = game:GetService("RunService")
+local UserInputService  = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local SPEED  = 60
+local flying = false
+
+local bodyVelocity, bodyGyro
+local connections = {}
+
+local function getRoot()
+    local character = player.Character or player.CharacterAdded:Wait()
+    return character:WaitForChild("HumanoidRootPart")
+end
+
+local function stop()
+    flying = false
+    for _, connection in ipairs(connections) do
+        connection:Disconnect()
+    end
+    connections = {}
+    if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
+    if bodyGyro     then bodyGyro:Destroy()     bodyGyro     = nil end
+end
+
+local function start()
+    if flying then return end
+    local root = getRoot()
+
+    bodyVelocity = Instance.new("BodyVelocity")
+    bodyVelocity.MaxForce = Vector3.new(1, 1, 1) * 100000
+    bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+    bodyVelocity.Parent   = root
+
+    bodyGyro = Instance.new("BodyGyro")
+    bodyGyro.MaxTorque = Vector3.new(1, 1, 1) * 100000
+    bodyGyro.P         = 90000
+    bodyGyro.CFrame    = root.CFrame
+    bodyGyro.Parent    = root
+
+    flying = true
+
+    connections[#connections + 1] = RunService.RenderStepped:Connect(function()
+        if not flying or not bodyVelocity or not bodyGyro then return end
+        local camera    = workspace.CurrentCamera
+        local direction = Vector3.new(0, 0, 0)
+
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+            direction = direction + camera.CFrame.LookVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+            direction = direction - camera.CFrame.LookVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+            direction = direction - camera.CFrame.RightVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+            direction = direction + camera.CFrame.RightVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+            direction = direction + Vector3.new(0, 1, 0)
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+            direction = direction - Vector3.new(0, 1, 0)
+        end
+
+        if direction.Magnitude > 0 then
+            direction = direction.Unit
+        end
+
+        bodyVelocity.Velocity = direction * SPEED
+        bodyGyro.CFrame       = camera.CFrame
+    end)
+end
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.F then
+        if flying then stop() else start() end
+    end
+end)
+
+player.CharacterRemoving:Connect(stop)
+
+print("[Pulse] Fly Script loaded - press F to fly")
+`,
+  },
+
+  {
+    id: 'aimbot',
+    name: 'AimBot',
+    tag: 'combat',
+    code:
+`--[[
+    Pulse - AimBot (aim assist template)
+    Hold right mouse button to lock onto the closest visible target.
+    Requires an executor that exposes mousemoverel().
+]]
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local camera = workspace.CurrentCamera
+
+local CONFIG = {
+    Enabled      = true,
+    AimPart      = "Head",
+    FOV          = 150,     -- radius in pixels
+    MaxDistance  = 300,
+    TeamCheck    = true,
+    Smoothness   = 0.35,    -- 0..1, 1 = instant
+    WallCheck    = true,
+}
+
+if type(mousemoverel) ~= "function" then
+    warn("[Pulse] mousemoverel() is unavailable in this environment")
+    return
+end
+
+local localPlayer = Players.LocalPlayer
+
+local function sameTeam(other)
+    return CONFIG.TeamCheck and other.Team == localPlayer.Team
+end
+
+local function visible(part)
+    if not CONFIG.WallCheck then return true end
+    local origin = camera.CFrame.Position
+    local params = RaycastParams.new()
+    params.FilterType                 = Enum.RaycastFilterType.Blacklist
+    params.FilterDescendantsInstances = { localPlayer.Character }
+    local hit = workspace:Raycast(origin, part.Position - origin, params)
+    return (not hit) or hit.Instance:IsDescendantOf(part.Parent)
+end
+
+local function closestTarget()
+    local best, bestDistance = nil, math.huge
+    local centre = camera.ViewportSize / 2
+
+    for _, other in ipairs(Players:GetPlayers()) do
+        if other ~= localPlayer and other.Character and not sameTeam(other) then
+            local part   = other.Character:FindFirstChild(CONFIG.AimPart)
+            local human  = other.Character:FindFirstChildOfClass("Humanoid")
+            if part and human and human.Health > 0 then
+                local screen, onScreen = camera:WorldToViewportPoint(part.Position)
+                local distance3d = (part.Position - camera.CFrame.Position).Magnitude
+                if onScreen and distance3d <= CONFIG.MaxDistance then
+                    local offset   = (Vector2.new(screen.X, screen.Y) - centre).Magnitude
+                    if offset <= CONFIG.FOV and offset < bestDistance and visible(part) then
+                        best, bestDistance = part, offset
+                    end
+                end
+            end
+        end
+    end
+
+    return best
+end
+
+RunService.RenderStepped:Connect(function()
+    if not CONFIG.Enabled then return end
+    if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then return end
+
+    local target = closestTarget()
+    if not target then return end
+
+    local screen  = camera:WorldToViewportPoint(target.Position)
+    local centre  = camera.ViewportSize / 2
+    local deltaX  = (screen.X - centre.X) * CONFIG.Smoothness
+    local deltaY  = (screen.Y - centre.Y) * CONFIG.Smoothness
+
+    mousemoverel(deltaX, deltaY)
+end)
+
+print("[Pulse] AimBot loaded - hold RMB to assist")
+`,
+  },
+
+  {
+    id: 'esp',
+    name: 'ESP',
+    tag: 'visual',
+    code:
+`--[[
+    Pulse - ESP
+    Draws a highlight box + name/distance label above every player.
+]]
+local Players    = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local CONFIG = {
+    Enabled      = true,
+    ShowNames    = true,
+    ShowDistance = true,
+    MaxDistance  = 800,
+    FillTransparency = 0.65,
+    FriendColor  = Color3.fromRGB(80, 255, 170),
+    EnemyColor   = Color3.fromRGB(255, 90, 160),
+    TextColor    = Color3.fromRGB(235, 225, 255),
+}
+
+local localPlayer = Players.LocalPlayer
+local camera      = workspace.CurrentCamera
+local tracked     = {}
+
+local function makeLabel(name)
+    local gui = Instance.new("BillboardGui")
+    gui.Name           = "PulseTag"
+    gui.Size           = UDim2.new(0, 160, 0, 34)
+    gui.StudsOffset    = Vector3.new(0, 2.6, 0)
+    gui.AlwaysOnTop    = true
+    gui.MaxDistance    = CONFIG.MaxDistance
+
+    local text = Instance.new("TextLabel")
+    text.Name                   = "Label"
+    text.Size                   = UDim2.new(1, 0, 1, 0)
+    text.BackgroundTransparency = 1
+    text.Text                   = name
+    text.TextColor3             = CONFIG.TextColor
+    text.TextStrokeTransparency = 0.4
+    text.TextSize               = 14
+    text.Font                   = Enum.Font.GothamBold
+    text.Parent                 = gui
+
+    return gui, text
+end
+
+local function attach(character, player)
+    if character:GetAttribute("PulseEsp") then return end
+    character:SetAttribute("PulseEsp", true)
+
+    local highlight = Instance.new("Highlight")
+    highlight.Name              = "PulseHighlight"
+    highlight.FillTransparency  = CONFIG.FillTransparency
+    highlight.OutlineColor      = Color3.fromRGB(255, 255, 255)
+    highlight.OutlineTransparency = 0.2
+    highlight.Adornee           = character
+    highlight.Parent            = character
+
+    local gui, label = makeLabel(player.DisplayName)
+    gui.Adornee = character:WaitForChild("Head", 5)
+    gui.Parent  = character
+
+    tracked[player] = { highlight = highlight, gui = gui, label = label }
+end
+
+local function detach(player)
+    local entry = tracked[player]
+    if not entry then return end
+    if entry.highlight then entry.highlight:Destroy() end
+    if entry.gui       then entry.gui:Destroy()       end
+    tracked[player] = nil
+end
+
+local function watch(player)
+    player.CharacterAdded:Connect(function(character)
+        task.wait(0.35)
+        if CONFIG.Enabled then attach(character, player) end
+    end)
+    player.CharacterRemoving:Connect(function()
+        detach(player)
+    end)
+    if player.Character then attach(player.Character, player) end
+end
+
+Players.PlayerAdded:Connect(watch)
+Players.PlayerRemoving:Connect(detach)
+for _, player in ipairs(Players:GetPlayers()) do
+    if player ~= localPlayer then watch(player) end
+end
+
+RunService.RenderStepped:Connect(function()
+    if not CONFIG.Enabled then return end
+    for player, entry in pairs(tracked) do
+        local character = player.Character
+        local root      = character and character:FindFirstChild("HumanoidRootPart")
+        if root then
+            local distance = (root.Position - camera.CFrame.Position).Magnitude
+            entry.highlight.FillColor = (player.Team and player.Team == localPlayer.Team)
+                and CONFIG.FriendColor or CONFIG.EnemyColor
+            entry.gui.Enabled = distance <= CONFIG.MaxDistance
+            if CONFIG.ShowDistance then
+                entry.label.Text = string.format("%s\\n%d m", player.DisplayName, math.floor(distance))
+            end
+        end
+    end
+end)
+
+print("[Pulse] ESP loaded - " .. tostring(#Players:GetPlayers()) .. " player(s) tracked")
+`,
+  },
+
+  {
+    id: 'speedhack',
+    name: 'SpeedHack',
+    tag: 'movement',
+    code:
+`--[[
+    Pulse - SpeedHack
+    Numpad + / -   change speed by 5
+    Numpad *       reset to the default speed
+]]
+local Players           = game:GetService("Players")
+local UserInputService  = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+
+local CONFIG = {
+    Speed   = 32,
+    Default = 16,
+    Step    = 5,
+    Min     = 8,
+    Max     = 200,
+}
+
+local function apply()
+    local character = player.Character
+    local human     = character and character:FindFirstChildOfClass("Humanoid")
+    if human then
+        human.WalkSpeed = CONFIG.Speed
+    end
+end
+
+local function set(value)
+    CONFIG.Speed = math.clamp(value, CONFIG.Min, CONFIG.Max)
+    apply()
+    print(string.format("[Pulse] WalkSpeed = %d", CONFIG.Speed))
+end
+
+player.CharacterAdded:Connect(function()
+    task.wait(0.5)
+    apply()
+end)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.KeypadPlus then
+        set(CONFIG.Speed + CONFIG.Step)
+    elseif input.KeyCode == Enum.KeyCode.KeypadMinus then
+        set(CONFIG.Speed - CONFIG.Step)
+    elseif input.KeyCode == Enum.KeyCode.KeypadMultiply then
+        set(CONFIG.Default)
+    end
+end)
+
+apply()
+print("[Pulse] SpeedHack loaded - use Numpad +/- to adjust")
+`,
+  },
+
+  {
+    id: 'infinite-yield',
+    name: 'Infinite Yield',
+    tag: 'admin',
+    code:
+`--[[
+    Pulse - Infinite Yield (mini)
+    A compact admin command bar. Press the ; key (or click the box) to type.
+
+    Commands:  fly  noclip  esp  speed <n>  jump <n>  heal  reset  cmds
+]]
+local Players          = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService       = game:GetService("RunService")
+
+local player      = Players.LocalPlayer
+local playerGui   = player:WaitForChild("PlayerGui")
+
+local screen = Instance.new("ScreenGui")
+screen.Name           = "PulseAdmin"
+screen.ResetOnSpawn   = false
+screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screen.Parent         = playerGui
+
+local frame = Instance.new("Frame")
+frame.Size                   = UDim2.new(0, 300, 0, 32)
+frame.Position               = UDim2.new(0.5, -150, 0, 12)
+frame.BackgroundColor3       = Color3.fromRGB(16, 10, 28)
+frame.BackgroundTransparency = 0.15
+frame.BorderSizePixel        = 0
+frame.Parent                 = screen
+
+local stroke = Instance.new("UIStroke")
+stroke.Color     = Color3.fromRGB(168, 85, 247)
+stroke.Thickness = 1
+stroke.Parent    = frame
+
+local box = Instance.new("TextBox")
+box.Size                   = UDim2.new(1, -16, 1, 0)
+box.Position               = UDim2.new(0, 8, 0, 0)
+box.BackgroundTransparency = 1
+box.TextColor3             = Color3.fromRGB(233, 224, 247)
+box.PlaceholderText        = "type a command (cmds)"
+box.PlaceholderColor3      = Color3.fromRGB(120, 105, 150)
+box.TextXAlignment         = Enum.TextXAlignment.Left
+box.Font                   = Enum.Font.Gotham
+box.TextSize               = 14
+box.ClearTextOnFocus       = false
+box.Parent                 = frame
+
+local flying, noclip = false, false
+local bodyVelocity, noclipConnection
+
+local function getCharacter()
+    return player.Character or player.CharacterAdded:Wait()
+end
+
+local function toggleFly()
+    flying = not flying
+    local root = getCharacter():WaitForChild("HumanoidRootPart")
+    if flying then
+        bodyVelocity = Instance.new("BodyVelocity")
+        bodyVelocity.MaxForce = Vector3.new(1, 1, 1) * 100000
+        bodyVelocity.Parent   = root
+        while flying do
+            local camera = workspace.CurrentCamera
+            local move   = Vector3.new(0, 0, 0)
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + camera.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move - camera.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move - camera.CFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + camera.CFrame.RightVector end
+            if bodyVelocity and bodyVelocity.Parent then
+                bodyVelocity.Velocity = (move.Magnitude > 0 and move.Unit * 55 or Vector3.new(0, 0, 0))
+            end
+            RunService.RenderStepped:Wait()
+        end
+        if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
+    end
+    return "fly " .. (flying and "on" or "off")
+end
+
+local function toggleNoclip()
+    noclip = not noclip
+    if noclip then
+        noclipConnection = RunService.Stepped:Connect(function()
+            local character = player.Character
+            if not character then return end
+            for _, part in ipairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then part.CanCollide = false end
+            end
+        end)
+    elseif noclipConnection then
+        noclipConnection:Disconnect()
+        noclipConnection = nil
+    end
+    return "noclip " .. (noclip and "on" or "off")
+end
+
+local COMMANDS = {
+    fly    = toggleFly,
+    noclip = toggleNoclip,
+    speed  = function(value)
+        local human = getCharacter():FindFirstChildOfClass("Humanoid")
+        if human then human.WalkSpeed = tonumber(value) or 16 end
+        return "walkspeed = " .. tostring(human and human.WalkSpeed)
+    end,
+    jump = function(value)
+        local human = getCharacter():FindFirstChildOfClass("Humanoid")
+        if human then human.JumpPower = tonumber(value) or 50 end
+        return "jumppower = " .. tostring(human and human.JumpPower)
+    end,
+    heal = function()
+        local human = getCharacter():FindFirstChildOfClass("Humanoid")
+        if human then human.Health = human.MaxHealth end
+        return "healed"
+    end,
+    reset = function()
+        local human = getCharacter():FindFirstChildOfClass("Humanoid")
+        if human then human.Health = 0 end
+        return "respawning"
+    end,
+    esp = function()
+        return "open the ESP entry in the Script Hub"
+    end,
+    cmds = function()
+        return "fly | noclip | speed <n> | jump <n> | heal | reset | cmds"
+    end,
+}
+
+local function run(raw)
+    local parts = {}
+    for word in string.gmatch(raw, "%S+") do
+        table.insert(parts, word)
+    end
+    local name = parts[1]
+    if not name then return end
+    local handler = COMMANDS[string.lower(name)]
+    if not handler then
+        warn("[Pulse] unknown command: " .. name)
+        return
+    end
+    local ok, result = pcall(handler, parts[2])
+    print("[Pulse] " .. (ok and tostring(result) or "error: " .. tostring(result)))
+end
+
+box.FocusLost:Connect(function(enterPressed)
+    if not enterPressed then return end
+    local text = box.Text
+    box.Text = ""
+    if text ~= "" then task.spawn(run, text) end
+end)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.Semicolon then
+        box:CaptureFocus()
+    end
+end)
+
+print("[Pulse] Infinite Yield (mini) loaded - press ; to open the command bar")
+`,
+  },
+
+  {
+    id: 'noclip',
+    name: 'Noclip',
+    tag: 'movement',
+    code:
+`--[[
+    Pulse - Noclip
+    Walk through walls. Press N to toggle.
+]]
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local player    = Players.LocalPlayer
+local enabled   = false
+local connection
+
+local function characterParts()
+    local character = player.Character
+    if not character then return {} end
+    return character:GetDescendants()
+end
+
+local function enable()
+    enabled    = true
+    connection = RunService.Stepped:Connect(function()
+        for _, part in ipairs(characterParts()) do
+            if part:IsA("BasePart") and part.CanCollide then
+                part.CanCollide = false
+            end
+        end
+    end)
+end
+
+local function disable()
+    enabled = false
+    if connection then
+        connection:Disconnect()
+        connection = nil
+    end
+    for _, part in ipairs(characterParts()) do
+        if part:IsA("BasePart") then part.CanCollide = true end
+    end
+end
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.N then
+        if enabled then disable() else enable() end
+        print("[Pulse] noclip " .. (enabled and "on" or "off"))
+    end
+end)
+
+print("[Pulse] Noclip loaded - press N to toggle")
+`,
+  },
+
+  {
+    id: 'anti-afk',
+    name: 'Anti-AFK',
+    tag: 'utility',
+    code:
+`--[[
+    Pulse - Anti-AFK
+    Keeps the session active so you are not disconnected while idle.
+]]
+local Players        = game:GetService("Players")
+local VirtualUser    = game:GetService("VirtualUser")
+
+local player = Players.LocalPlayer
+local CONFIG = { IdleLimit = 900 } -- seconds before Roblox idles you out
+
+local function hook()
+    player.Idled:Connect(function()
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.new())
+        print("[Pulse] anti-afk: session kept alive")
+    end)
+end
+
+if player.Idled then hook() end
+player.CharacterAdded:Connect(function()
+    task.wait(1)
+    if player.Idled then hook() end
+end)
+
+print("[Pulse] Anti-AFK loaded (idle limit " .. tostring(CONFIG.IdleLimit) .. "s)")
+`,
+  },
+];
+
+/* =========================================================================
+   Lua grammar for the built-in fallback editor
+   ========================================================================= */
 
 const RULES = {
-  javascript: [
-    { type: 'comment', re: String.raw`\/\/[^\n]*|\/\*[\s\S]*?\*\/` },
-    { type: 'string', re: String.raw`'(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"|\`(?:\\.|[^\\\\\`])*\`` },
-    { type: 'number', re: String.raw`\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b` },
-    { type: 'keyword', re: String.raw`\b(?:const|let|var|function|return|if|else|for|while|do|switch|case|default|break|continue|new|class|extends|super|this|typeof|instanceof|delete|in|of|try|catch|finally|throw|async|await|import|export|from|as|yield|static|null|undefined|true|false|void|with)\b` },
-    { type: 'builtin', re: String.raw`\b(?:console|Math|JSON|Object|Array|String|Number|Boolean|Promise|Date|RegExp|Map|Set|Symbol|process|require|module|exports|globalThis|window|document|Buffer)\b` },
-    { type: 'func', re: String.raw`\b[A-Za-z_$][\w$]*(?=\s*\()` },
-    { type: 'op', re: String.raw`=>|[+\-*/%=<>!&|^~?:]+` },
-  ],
-  python: [
-    { type: 'comment', re: String.raw`#[^\n]*` },
-    { type: 'string', re: String.raw`[rbfu]{0,2}'''(?:\\.|[^\\])*?'''|[rbfu]{0,2}"""(?:\\.|[^\\])*?"""|[rbfu]{0,2}'(?:\\.|[^'\\\n])*'|[rbfu]{0,2}"(?:\\.|[^"\\\n])*"` },
-    { type: 'number', re: String.raw`\b\d+(?:\.\d+)?\b` },
-    { type: 'keyword', re: String.raw`\b(?:def|class|return|if|elif|else|for|while|break|continue|import|from|as|pass|raise|try|except|finally|with|lambda|yield|global|nonlocal|assert|del|in|is|not|and|or|None|True|False|async|await|self)\b` },
-    { type: 'builtin', re: String.raw`\b(?:print|len|range|str|int|float|list|dict|set|tuple|open|enumerate|zip|map|filter|sum|min|max|abs|sorted|type|isinstance|input|json|os|sys|time)\b` },
-    { type: 'func', re: String.raw`\b[A-Za-z_][\w]*(?=\s*\()` },
-    { type: 'op', re: String.raw`[+\-*/%=<>!&|^~:]+` },
-  ],
-  powershell: [
-    { type: 'comment', re: String.raw`#[^\n]*|<#[\s\S]*?#>` },
-    { type: 'string', re: String.raw`"(?:\\.|[^"\\])*"|'(?:[^']*)'` },
-    { type: 'keyword', re: String.raw`\b(?:function|param|if|else|elseif|switch|foreach|for|while|do|until|return|break|continue|try|catch|finally|throw|begin|process|end|filter|workflow|class|using|namespace)\b` },
-    { type: 'builtin', re: String.raw`(?:Get-\w+|Set-\w+|New-\w+|Write-\w+|Out-\w+|Invoke-\w+|Start-\w+|Stop-\w+|Test-\w+|\$Host|\$env:\w+|\$_\b)` },
-    { type: 'number', re: String.raw`\b\d+(?:\.\d+)?\b` },
-    { type: 'op', re: String.raw`-[a-zA-Z]+|[|&;]+|[+\-*/%=<>!]+` },
-  ],
-  bat: [
-    { type: 'comment', re: String.raw`^\s*(?:rem|::)[^\n]*` },
-    { type: 'keyword', re: String.raw`\b(?:echo|set|if|else|for|in|do|goto|call|exit|start|pause|cls|shift|endlocal|setlocal|pushd|popd|title|type|del|copy|move|md|rd)\b` },
-    { type: 'builtin', re: String.raw`%[\w]+%|%%[\w]` },
-    { type: 'string', re: String.raw`"(?:[^"]*)"` },
-  ],
-  markdown: [
-    { type: 'keyword', re: '^\\s{0,3}#{1,6}[^\\n]*' },
-    { type: 'string', re: '\\[[^\\]]*\\]\\([^)]*\\)' },
-    { type: 'builtin', re: '^\\s{0,3}[-*+]\\s[^\\n]*|\\*\\*[^\\*]+\\*\\*' },
-  ],
-  shell: [
-    { type: 'comment', re: String.raw`#[^\n]*` },
-    { type: 'string', re: String.raw`"(?:\\.|[^"\\])*"|'[^']*'` },
-    { type: 'keyword', re: String.raw`\b(?:if|then|else|elif|fi|for|in|do|done|while|until|case|esac|function|return|export|local|source|echo|cd|set|exit)\b` },
-    { type: 'builtin', re: String.raw`\$(?:[\w@#?*!$-]+|\{[^}]+\})` },
-    { type: 'number', re: String.raw`\b\d+\b` },
-  ],
-  json: [
-    { type: 'string', re: String.raw`"(?:\\.|[^"\\])*"\s*(?=:)` },
-    { type: 'builtin', re: String.raw`"(?:\\.|[^"\\])*"` },
-    { type: 'keyword', re: String.raw`\b(?:true|false|null)\b` },
-    { type: 'number', re: String.raw`-?\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b` },
-  ],
-  html: [
-    { type: 'comment', re: String.raw`<!--[\s\S]*?-->` },
-    { type: 'string', re: String.raw`"(?:[^"]*)"|'(?:[^']*)'` },
-    { type: 'keyword', re: String.raw`<\/?[a-zA-Z][\w-]*|\/?>` },
-    { type: 'builtin', re: String.raw`\b[a-zA-Z-]+(?==)` },
-  ],
-  css: [
-    { type: 'comment', re: String.raw`\/\*[\s\S]*?\*\/` },
-    { type: 'string', re: String.raw`"(?:[^"]*)"|'(?:[^']*)'` },
-    { type: 'number', re: String.raw`-?\b\d+(?:\.\d+)?(?:px|em|rem|%|vh|vw|s|ms|deg)?\b|#[0-9a-fA-F]{3,8}` },
-    { type: 'keyword', re: String.raw`[.#]?[a-zA-Z-]+(?=\s*\{)|@[a-zA-Z-]+` },
-    { type: 'builtin', re: String.raw`\b[a-zA-Z-]+(?=\s*:)` },
+  lua: [
+    { type: 'comment', re: String.raw`--\[\[[\s\S]*?\]\]|--[^\n]*` },
+    { type: 'string', re: String.raw`\[\[[\s\S]*?\]\]|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'` },
+    { type: 'number', re: String.raw`0[xX][0-9a-fA-F]+|\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b` },
+    {
+      type: 'keyword',
+      re: String.raw`\b(?:and|break|do|else|elseif|end|false|for|function|goto|if|in|local|nil|not|or|repeat|return|then|true|until|while)\b`,
+    },
+    {
+      type: 'builtin',
+      re: String.raw`\b(?:game|workspace|script|Instance|Vector2|Vector3|CFrame|Color3|UDim2|Enum|RaycastParams|print|warn|error|type|tostring|tonumber|pairs|ipairs|string|table|math|task|select|pcall|setmetatable)\b`,
+    },
+    { type: 'func', re: String.raw`\b[A-Za-z_][\w]*(?=\s*[({\"][^)]*\)\s*$)?` },
+    { type: 'op', re: String.raw`\.\.\.|\.\.|[=~<>]=|[+\-*/%#^<>=(){}[\];:,.&|]` },
   ],
 };
-
-/** Extra flags per grammar (JavaScript has no inline (?i)/(?m) flags). */
-const GRAMMAR_FLAGS = { bat: 'gim', markdown: 'gm' };
 
 const MASTER_CACHE = {};
 
@@ -138,19 +712,16 @@ function masterRegex(language) {
   if (MASTER_CACHE[language] !== undefined) return MASTER_CACHE[language];
   const rules = RULES[language];
   if (!rules) { MASTER_CACHE[language] = null; return null; }
-
   let regex;
   try {
-    regex = new RegExp(rules.map((r) => `(${r.re})`).join('|'), GRAMMAR_FLAGS[language] || 'g');
+    regex = new RegExp(rules.map((r) => `(${r.re})`).join('|'), 'g');
   } catch (error) {
-    console.warn(`[pulse] invalid grammar for "${language}":`, error.message);
+    console.warn('[pulse] invalid grammar', error.message);
     MASTER_CACHE[language] = null;
     return null;
   }
-
-  const entry = { regex, rules };
-  MASTER_CACHE[language] = entry;
-  return entry;
+  MASTER_CACHE[language] = { regex, rules };
+  return MASTER_CACHE[language];
 }
 
 function escapeHtml(text) {
@@ -176,9 +747,7 @@ function highlightCode(text, language) {
     for (let i = 1; i <= entry.rules.length; i += 1) {
       if (match[i] !== undefined) { type = entry.rules[i - 1].type; break; }
     }
-    out += type
-      ? `<span class="tok-${type}">${escapeHtml(match[0])}</span>`
-      : escapeHtml(match[0]);
+    out += type ? `<span class="tok-${type}">${escapeHtml(match[0])}</span>` : escapeHtml(match[0]);
     last = match.index + match[0].length;
   }
   out += escapeHtml(text.slice(last));
@@ -186,7 +755,7 @@ function highlightCode(text, language) {
 }
 
 const FallbackEditor = {
-  language: 'javascript',
+  language: LANGUAGE,
   onChange: null,
   onCursor: null,
 
@@ -215,17 +784,12 @@ const FallbackEditor = {
 
   getValue() { return dom.input.value; },
 
-  setValue(value, language) {
+  setValue(value) {
     dom.input.value = value == null ? '' : String(value);
-    if (language) this.language = language;
     dom.input.scrollTop = 0;
+    dom.input.selectionStart = dom.input.selectionEnd = 0;
     this.render();
     this.cursor();
-  },
-
-  setLanguage(language) {
-    this.language = language;
-    this.render();
   },
 
   focus() { dom.input.focus(); },
@@ -234,7 +798,7 @@ const FallbackEditor = {
 
   render(notify) {
     const value = dom.input.value;
-    dom.highlight.innerHTML = `${highlightCode(value, this.language)}\n`;
+    dom.highlight.innerHTML = `${highlightCode(value, LANGUAGE)}\n`;
     const lines = value.split('\n').length;
     const caretLine = value.slice(0, dom.input.selectionStart).split('\n').length;
     const numbers = [];
@@ -248,13 +812,14 @@ const FallbackEditor = {
   cursor() {
     if (typeof this.onCursor !== 'function') return;
     const value = dom.input.value;
-    const upto = value.slice(0, dom.input.selectionStart);
-    const lines = upto.split('\n');
+    const lines = value.slice(0, dom.input.selectionStart).split('\n');
     this.onCursor({ lineNumber: lines.length, column: lines[lines.length - 1].length + 1 });
   },
 };
 
-/* ----------------------------------------------------------- monaco setup */
+/* =========================================================================
+   Monaco (offline AMD bundle) — always Lua
+   ========================================================================= */
 
 let monaco = null;
 let monacoEditor = null;
@@ -267,11 +832,15 @@ function monacoTheme() {
       { token: 'comment', foreground: '5b4b7a', fontStyle: 'italic' },
       { token: 'keyword', foreground: 'c084fc' },
       { token: 'string', foreground: '86efac' },
+      { token: 'string.escape', foreground: '22d3ee' },
       { token: 'number', foreground: 'fbbf24' },
-      { token: 'type', foreground: '67e8f9' },
+      { token: 'constant', foreground: 'fbbf24' },
       { token: 'identifier', foreground: 'e6dcf5' },
+      { token: 'type', foreground: '67e8f9' },
       { token: 'delimiter', foreground: 'd8b4fe' },
-      { token: 'tag', foreground: 'f472b6' },
+      { token: 'operator', foreground: 'd8b4fe' },
+      { token: 'variable', foreground: 'e6dcf5' },
+      { token: 'function', foreground: 'f472b6' },
     ],
     colors: {
       'editor.background': '#08060f',
@@ -282,7 +851,7 @@ function monacoTheme() {
       'editor.selectionBackground': '#6d28d9aa',
       'editor.inactiveSelectionBackground': '#6d28d955',
       'editor.lineHighlightBackground': '#160d26',
-      'editorLineNumber.dimmed': '#3a2b57',
+      'editorLineHighlightBorder': '#2a1a44',
       'editorGutter.background': '#08060f',
       'editorIndentGuide.background1': '#1d1233',
       'editorIndentGuide.activeBackground1': '#6d28d9',
@@ -303,10 +872,8 @@ function loadMonaco(basePath) {
   return new Promise((resolve, reject) => {
     if (!basePath) { reject(new Error('monaco bundle not found')); return; }
 
-    // Never let the boot screen hang: give the AMD bundle 15 s to appear.
-    const timer = setTimeout(() => {
-      reject(new Error('monaco loader timed out after 15 s'));
-    }, 15000);
+    // Never let the boot screen hang: 15 s is plenty for a local file.
+    const timer = setTimeout(() => reject(new Error('monaco loader timed out after 15 s')), 15000);
     const settle = (fn) => (value) => { clearTimeout(timer); fn(value); };
     const done = settle(resolve);
     const fail = settle(reject);
@@ -314,14 +881,14 @@ function loadMonaco(basePath) {
     const baseUrl = basePath.replace(/\\/g, '/').replace(/^\/*/, '/');
     const fileUrl = `file://${baseUrl}`;
 
-    // Web workers cannot be spawned from file:// in Electron; the shim below
-    // keeps Monaco fully usable (editing + highlighting) without them.
+    // Web workers cannot be spawned from file:// in Electron; the shim keeps
+    // Monaco fully usable (editing + highlighting) without them.
     window.MonacoEnvironment = {
       baseUrl: `${fileUrl}/`,
       getWorkerUrl() {
         const shim = [
-          'self.MonacoEnvironment = { baseUrl: "' + `${fileUrl}/` + '" };',
-          'try { importScripts("' + `${fileUrl}/base/worker/workerMain.js` + '"); }',
+          `self.MonacoEnvironment = { baseUrl: "${fileUrl}/" };`,
+          `try { importScripts("${fileUrl}/base/worker/workerMain.js"); }`,
           'catch (e) { self.postMessage = self.postMessage || function(){}; }',
         ].join('\n');
         return `data:text/javascript;charset=utf-8,${encodeURIComponent(shim)}`;
@@ -335,10 +902,9 @@ function loadMonaco(basePath) {
         fail(new Error('AMD loader unavailable'));
         return;
       }
-      window.require.config({ paths: { vs: `${fileUrl}` } });
-      window.require(['vs/editor/editor.main'], () => {
-        done(window.monaco);
-      }, (error) => fail(error instanceof Error ? error : new Error(String(error && error.message))));
+      window.require.config({ paths: { vs: fileUrl } });
+      window.require(['vs/editor/editor.main'], () => done(window.monaco), (error) =>
+        fail(error instanceof Error ? error : new Error(String(error && error.message))));
     };
     script.onerror = () => fail(new Error('cannot load monaco loader.js'));
     document.head.appendChild(script);
@@ -354,7 +920,7 @@ function buildMonacoEditor() {
 
   monacoEditor = monaco.editor.create(container, {
     value: '',
-    language: 'javascript',
+    language: LANGUAGE,                 // Lua — permanently
     theme: 'pulse-cyber',
     automaticLayout: true,
     fontFamily: 'JetBrains Mono, Fira Code, Cascadia Code, Consolas, monospace',
@@ -367,13 +933,14 @@ function buildMonacoEditor() {
     cursorBlinking: 'phase',
     cursorSmoothCaretAnimation: 'on',
     smoothScrolling: true,
-    padding: { top: 10, bottom: 10 },
+    padding: { top: 8, bottom: 8 },
     roundedSelection: true,
     bracketPairColorization: { enabled: true },
     guides: { indentation: true, bracketPairs: true },
-    scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10, useShadows: false },
-    wordWrap: state.wrap ? 'on' : 'off',
+    scrollbar: { verticalScrollbarSize: 9, horizontalScrollbarSize: 9, useShadows: false },
+    wordWrap: 'off',
     tabSize: 2,
+    insertSpaces: true,
     suggestOnTriggerCharacters: true,
     quickSuggestions: { other: true, comments: false, strings: false },
     contextmenu: true,
@@ -386,8 +953,10 @@ function buildMonacoEditor() {
   });
   monacoEditor.onDidChangeCursorPosition(updatePositionFromMonaco);
 
-  // Language services that need workers are switched off: the app must stay
-  // fully functional when it runs from the file:// protocol.
+  // Language services that need workers stay off: Pulse must work offline.
+  if (monaco.languages.lua && monaco.languages.lua.luaDefaults) {
+    monaco.languages.lua.luaDefaults.setDiagnosticsOptions({ noSemanticValidation: true });
+  }
   if (monaco.languages.typescript) {
     const options = { noSemanticValidation: true, noSyntaxValidation: true, noSuggestionDiagnostics: true };
     monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions(options);
@@ -402,48 +971,28 @@ function buildMonacoEditor() {
   renderStatus();
 }
 
-/* ------------------------------------------------------- editor  adapter */
+/* -------------------------------------------------------- editor adapter */
 
 const Editor = {
-  get mode() { return monacoEditor ? 'monaco' : 'fallback'; },
-
   getValue() {
-    if (monacoEditor) return monacoEditor.getValue();
-    return FallbackEditor.getValue();
+    return monacoEditor ? monacoEditor.getValue() : FallbackEditor.getValue();
   },
 
-  setValue(value, language) {
+  setValue(value) {
     if (monacoEditor) {
-      const model = monacoEditor.getModel();
-      if (model) monaco.editor.setModelLanguage(model, language || 'plaintext');
       monacoEditor.setValue(value == null ? '' : String(value));
       monacoEditor.setPosition({ lineNumber: 1, column: 1 });
+      monacoEditor.revealLine(1);
       monacoEditor.focus();
       return;
     }
-    FallbackEditor.setValue(value, language);
+    FallbackEditor.setValue(value);
     FallbackEditor.focus();
-  },
-
-  setLanguage(language) {
-    if (monacoEditor) {
-      const model = monacoEditor.getModel();
-      if (model) monaco.editor.setModelLanguage(model, language);
-    } else {
-      FallbackEditor.setLanguage(language);
-    }
   },
 
   focus() {
     if (monacoEditor) monacoEditor.focus();
     else FallbackEditor.focus();
-  },
-
-  setWrap(on) {
-    if (monacoEditor) monacoEditor.updateOptions({ wordWrap: on ? 'on' : 'off' });
-    dom.input.classList.toggle('is-wrap', on);
-    dom.highlight.classList.toggle('is-wrap', on);
-    dom.console.classList.toggle('is-wrap', on);
   },
 
   layout() {
@@ -460,8 +1009,8 @@ function activeTab() {
   return state.tabs.find((t) => t.id === state.activeTabId) || null;
 }
 
-function addTab({ name, path = null, content = '', language = 'plaintext' }) {
-  const tab = { id: `tab-${++tabSeq}`, name, path, language, dirty: false, model: null, content };
+function addTab({ name, path = null, content = '' }) {
+  const tab = { id: `tab-${++tabSeq}`, name, path, language: LANGUAGE, dirty: false, model: null, content };
   state.tabs.push(tab);
   setActiveTab(tab.id);
   renderTabs();
@@ -475,7 +1024,7 @@ function closeTab(id) {
   if (tab.model && monaco) tab.model.dispose();
   if (!state.tabs.length) {
     state.activeTabId = null;
-    addTab({ name: 'untitled.js', content: SAMPLE, language: 'javascript' });
+    addTab({ name: 'script.lua', content: WELCOME });
   } else if (state.activeTabId === id) {
     setActiveTab(state.tabs[Math.max(0, index - 1)].id);
   }
@@ -484,23 +1033,20 @@ function closeTab(id) {
 
 function setActiveTab(id) {
   const previous = activeTab();
-  if (previous) {
-    previous.content = monacoEditor ? monacoEditor.getValue() : FallbackEditor.getValue();
-  }
+  if (previous) previous.content = monacoEditor ? monacoEditor.getValue() : FallbackEditor.getValue();
 
   state.activeTabId = id;
   const tab = activeTab();
   if (!tab) return;
 
   if (monacoEditor && monaco) {
-    if (!tab.model) tab.model = monaco.editor.createModel(tab.content, tab.language);
+    if (!tab.model) tab.model = monaco.editor.createModel(tab.content, LANGUAGE);
     monacoEditor.setModel(tab.model);
   } else {
-    FallbackEditor.setValue(tab.content, tab.language);
+    FallbackEditor.setValue(tab.content);
   }
 
   dom.statusFile.textContent = tab.name + (tab.dirty ? ' •' : '');
-  dom.st.lang.textContent = tab.language;
   renderTabs();
   updatePosition();
 }
@@ -538,61 +1084,58 @@ function renderTabs() {
 function syncActiveContent() {
   const tab = activeTab();
   if (!tab) return;
-  if (monacoEditor) tab.content = monacoEditor.getValue();
-  else tab.content = FallbackEditor.getValue();
+  tab.content = monacoEditor ? monacoEditor.getValue() : FallbackEditor.getValue();
 }
 
-/* --------------------------------------------------------------- console */
+/* ----------------------------------------------------------- status bar */
 
-const ANSI_RE = /\u001b\[([0-9;]*)m/g;
-const ANSI_MAP = {
-  30: 'ansi-red', 31: 'ansi-red', 32: 'ansi-green', 33: 'ansi-yellow',
-  34: 'ansi-blue', 35: 'ansi-magenta', 36: 'ansi-cyan', 37: '',
-  90: 'ansi-dim', 1: 'ansi-bold', 2: 'ansi-dim', 0: '',
-};
-
-function ansiToHtml(text) {
-  let out = '';
-  let last = 0;
-  let open = false;
-  ANSI_RE.lastIndex = 0;
-  let match;
-  while ((match = ANSI_RE.exec(text)) !== null) {
-    out += escapeHtml(text.slice(last, match.index));
-    if (open) { out += '</span>'; open = false; }
-    const codes = (match[1] || '0').split(';').filter(Boolean);
-    const classes = codes.map((c) => ANSI_MAP[Number(c)]).filter((c) => c !== undefined && c !== '');
-    if (classes.length) {
-      out += `<span class="${classes.join(' ')}">`;
-      open = true;
-    }
-    last = match.index + match[0].length;
-  }
-  out += escapeHtml(text.slice(last));
-  if (open) out += '</span>';
-  return out;
+function setAttached(attached, message) {
+  state.attached = Boolean(attached);
+  dom.stStatus.textContent = state.attached ? 'Status: Attached' : 'Status: Not Attached';
+  dom.stStatus.classList.toggle('status-badge--on', state.attached);
+  dom.stStatus.classList.toggle('status-badge--off', !state.attached);
+  dom.sideTarget.textContent = state.attached && state.attachPid ? `pid ${state.attachPid}` : '—';
+  if (message) setMessage(message);
 }
 
-function log(text, kind = 'stdout', time = null) {
-  const line = document.createElement('span');
-  line.className = `ln ln--${kind}`;
-  const stamp = document.createElement('span');
-  stamp.className = 'ln__time';
-  stamp.textContent = time || new Date().toLocaleTimeString('en-GB');
-  const body = document.createElement('span');
-  body.innerHTML = ansiToHtml(String(text));
-  line.append(stamp, body);
-  dom.console.appendChild(line);
-
-  while (dom.console.childElementCount > 1500) dom.console.removeChild(dom.console.firstChild);
-  dom.console.scrollTop = dom.console.scrollHeight;
+function setMessage(text) {
+  dom.stMessage.textContent = text;
 }
 
-function clearConsole() {
-  dom.console.innerHTML = '';
+function updatePositionFromMonaco() {
+  if (!monacoEditor) return;
+  const position = monacoEditor.getPosition();
+  if (position) dom.stPos.textContent = `Ln ${position.lineNumber}, Col ${position.column}`;
 }
 
-/* -------------------------------------------------------------- execution */
+function updatePosition() {
+  if (monacoEditor) updatePositionFromMonaco();
+  else FallbackEditor.cursor();
+}
+
+function renderStatus() {
+  dom.stEngine.textContent = state.engine;
+  dom.sideEngine.textContent = state.engine;
+  dom.sideLua.textContent = state.luaAvailable ? 'ready' : 'not found';
+  if (state.appInfo) dom.appVersion.textContent = `v${state.appInfo.version}`;
+}
+
+/* ---------------------------------------------------------------- toast */
+
+function showToast(title, text) {
+  dom.toastTitle.textContent = title;
+  dom.toastBody.textContent = text == null || text === '' ? '(no output)' : text;
+  dom.toast.hidden = false;
+  if (state.toastTimer) clearTimeout(state.toastTimer);
+  state.toastTimer = setTimeout(() => { dom.toast.hidden = true; }, 12000);
+}
+
+function hideToast() {
+  if (state.toastTimer) clearTimeout(state.toastTimer);
+  dom.toast.hidden = true;
+}
+
+/* ------------------------------------------------------------ execution */
 
 async function execute() {
   if (state.busy) return;
@@ -606,39 +1149,41 @@ async function execute() {
   }
 
   state.busy = true;
+  state.output = [];
   state.runId = null;
   setBusyUi(true);
-  dom.consoleMeta.textContent = `running · ${state.runner}`;
-  log(`▸ execute ${tab.name} with ${state.runner}`, 'system');
+  setMessage(`executing ${tab.name}…`);
+  showToast(`running · ${tab.name}`, '');
 
-  const useFile = Boolean(tab.path && !tab.dirty);
-  const payload = useFile
-    ? { runner: state.runner, filePath: tab.path, keepFile: true }
-    : { runner: state.runner, code: tab.content, filePath: tab.path };
+  const payload = tab.path && !tab.dirty
+    ? { runner: RUNNER, filePath: tab.path, keepFile: true }
+    : { runner: RUNNER, code: tab.content };
 
   try {
     const result = await window.pulse.run(payload);
     state.runId = result.runId;
-    dom.consoleMeta.textContent = result.ok
-      ? `exit ${result.exitCode} · ${result.duration} ms`
-      : `exit ${result.exitCode ?? 'null'} · ${result.duration} ms · ${result.error || 'failed'}`;
-    if (result.error) log(`✖ ${result.error}`, 'error');
-    setMessage(`finished with exit code ${result.exitCode} in ${result.duration} ms`);
+    if (result.error) {
+      setMessage(result.error);
+      showToast('error', result.error);
+    } else {
+      setMessage(`exit ${result.exitCode} · ${result.duration} ms`);
+      showToast(`exit ${result.exitCode} · ${result.duration} ms`, state.output.join(''));
+    }
     await window.pulse.setProgress(1);
     setTimeout(() => window.pulse.setProgress(-1), 600);
   } catch (error) {
-    log(`✖ ${error && error.message ? error.message : error}`, 'error');
-    setMessage('execution failed');
+    const text = error && error.message ? error.message : String(error);
+    setMessage(`execution failed: ${text}`);
+    showToast('error', text);
   } finally {
     state.busy = false;
     setBusyUi(false);
-    refreshWorkspace();
   }
 }
 
 async function stopExecution() {
-  const result = await window.pulse.cancel(state.runId || undefined);
-  log(`■ stop requested (${result.cancelled ? 'sent' : 'no active process'})`, 'system');
+  await window.pulse.cancel(state.runId || undefined);
+  setMessage('stopped');
   state.busy = false;
   setBusyUi(false);
 }
@@ -647,27 +1192,39 @@ function setBusyUi(busy) {
   const button = $('btn-execute');
   button.classList.toggle('is-busy', busy);
   button.querySelector('.action__text').textContent = busy ? 'Running…' : 'Execute';
-  $('btn-stop').disabled = !busy;
 }
 
-async function runUtility(id, label) {
-  if (state.busy) return;
-  state.busy = true;
-  setBusyUi(true);
-  dom.consoleMeta.textContent = `utility · ${id}`;
-  try {
-    const result = await window.pulse.runUtility({ id });
-    if (result.error) log(`✖ ${result.error}`, 'error');
-  } catch (error) {
-    log(`✖ ${error && error.message ? error.message : error}`, 'error');
-  } finally {
-    state.busy = false;
-    setBusyUi(false);
-    setMessage(`utility "${label || id}" finished`);
+/* ---------------------------------------------------------------- attach */
+
+async function attach() {
+  if (state.attached) {
+    await window.pulse.detach();
+    state.attachPid = null;
+    setAttached(false, 'detached');
+    $('btn-attach').querySelector('.action__text').textContent = 'Attach';
+    return;
+  }
+
+  setMessage('looking for the Roblox process…');
+  const found = await window.pulse.findRoblox();
+
+  if (!found || !found.ok || !found.pids || !found.pids.length) {
+    setAttached(false, found && found.error ? `not attached · ${found.error}` : 'not attached · Roblox process not found');
+    return;
+  }
+
+  const pid = found.pids[0];
+  const result = await window.pulse.attach({ mode: 'process', pid });
+  if (result.ok) {
+    state.attachPid = pid;
+    setAttached(true, `attached to pid ${pid}`);
+    $('btn-attach').querySelector('.action__text').textContent = 'Detach';
+  } else {
+    setAttached(false, `not attached · ${result.error || 'attach failed'}`);
   }
 }
 
-/* ------------------------------------------------------------------ files */
+/* ----------------------------------------------------------------- files */
 
 async function openFile() {
   const result = await window.pulse.openFile();
@@ -675,13 +1232,13 @@ async function openFile() {
 
   result.files.forEach((file) => {
     if (file.error) {
-      log(`✖ ${file.name}: ${file.error}`, 'error');
+      setMessage(`${file.name}: ${file.error}`);
+      showToast('open failed', `${file.name}: ${file.error}`);
       return;
     }
-    addTab({ name: file.name, path: file.path, content: file.content, language: file.language });
-    log(`▸ opened ${file.path} (${file.size} bytes)`, 'system');
+    addTab({ name: file.name, path: file.path, content: file.content });
+    setMessage(`opened ${file.path}`);
   });
-  setMessage(`${result.files.length} file(s) opened`);
 }
 
 async function saveFile() {
@@ -690,204 +1247,116 @@ async function saveFile() {
   syncActiveContent();
   const result = await window.pulse.saveFile({ filePath: tab.path, content: tab.content, suggestedName: tab.name });
   if (!result || result.canceled) { setMessage('save cancelled'); return; }
-  if (result.error) { log(`✖ save failed: ${result.error}`, 'error'); return; }
+  if (result.error) { setMessage(`save failed: ${result.error}`); return; }
   tab.path = result.path;
   tab.name = result.name;
-  tab.language = result.language || tab.language;
   tab.dirty = false;
   dom.statusFile.textContent = tab.name;
-  if (monacoEditor && tab.model) monaco.editor.setModelLanguage(tab.model, tab.language);
-  log(`▸ saved ${result.path}`, 'system');
+  setMessage(`saved ${result.path}`);
   renderTabs();
-  refreshWorkspace();
 }
 
-async function refreshWorkspace() {
-  const files = await window.pulse.listWorkspace();
-  dom.filelist.innerHTML = '';
-  if (!files.length) {
+/* ------------------------------------------------------------ script hub */
+
+function renderHub() {
+  const query = state.filter.trim().toLowerCase();
+  const list = SCRIPTS.filter((script) =>
+    !query ||
+    script.name.toLowerCase().includes(query) ||
+    script.tag.toLowerCase().includes(query));
+
+  dom.hubList.innerHTML = '';
+
+  if (!list.length) {
     const empty = document.createElement('div');
-    empty.className = 'filelist__empty';
-    empty.textContent = 'workspace is empty';
-    dom.filelist.appendChild(empty);
-    return;
+    empty.className = 'hub__empty';
+    empty.textContent = 'nothing found';
+    dom.hubList.appendChild(empty);
   }
-  files.slice(0, 40).forEach((file) => {
+
+  list.forEach((script) => {
     const item = document.createElement('div');
-    item.className = 'filelist__item';
-    item.textContent = `${file.name} · ${Math.max(1, Math.round(file.size / 1024))} KB`;
-    item.title = file.path;
-    item.addEventListener('click', () => openWorkspaceFile(file.path, file.name));
-    dom.filelist.appendChild(item);
+    item.className = 'script';
+    item.title = `Load ${script.name} into the editor`;
+
+    const name = document.createElement('span');
+    name.className = 'script__name';
+    name.textContent = script.name;
+
+    const tag = document.createElement('span');
+    tag.className = 'script__tag';
+    tag.textContent = script.tag;
+
+    item.append(name, tag);
+    item.addEventListener('click', () => {
+      loadScript(script);
+      dom.hubList.querySelectorAll('.script').forEach((el) => el.classList.remove('is-active'));
+      item.classList.add('is-active');
+    });
+
+    dom.hubList.appendChild(item);
   });
+
+  dom.hubCount.textContent = `${list.length} script${list.length === 1 ? '' : 's'}`;
 }
 
-async function openWorkspaceFile(filePath, name) {
-  const file = await window.pulse.readFile(filePath);
-  if (!file.ok) {
-    log(`✖ ${name || filePath}: ${file.error}`, 'error');
-    return;
+function loadScript(script) {
+  const tab = activeTab();
+
+  // An untouched buffer is simply replaced, otherwise the script opens in a
+  // new tab so the code you are working on is never lost.
+  if (tab && !tab.dirty && !tab.path) {
+    tab.name = `${script.id}.lua`;
+    tab.content = script.code;
+    if (monacoEditor && tab.model) tab.model.setValue(script.code);
+    else FallbackEditor.setValue(script.code);
+    if (monacoEditor) monacoEditor.setPosition({ lineNumber: 1, column: 1 });
+  } else {
+    addTab({ name: `${script.id}.lua`, content: script.code });
+    if (monacoEditor) monacoEditor.setPosition({ lineNumber: 1, column: 1 });
   }
-  addTab({ name: file.name, path: file.path, content: file.content, language: file.language });
-  log(`▸ opened ${file.path} (${file.size} bytes)`, 'system');
-  setMessage(`opened ${file.name}`);
+
+  dom.statusFile.textContent = `${script.id}.lua`;
+  renderTabs();
+  Editor.focus();
+  updatePosition();
+  setMessage(`loaded ${script.name} · ${script.code.split('\n').length} lines`);
 }
 
-/* -------------------------------------------------------------- attach UI */
-
-function toggleAttachPanel(force) {
-  const show = typeof force === 'boolean' ? force : dom.attachPanel.hidden;
-  dom.attachPanel.hidden = !show;
-  if (show) $('attach-host').focus();
+function toggleHub(force) {
+  state.hubOpen = typeof force === 'boolean' ? force : !state.hubOpen;
+  document.body.classList.toggle('no-hub', !state.hubOpen);
+  $('btn-hub').classList.toggle('is-on', state.hubOpen);
   Editor.layout();
-}
-
-function setAttachStatus(info) {
-  state.attached = Boolean(info && info.connected);
-  state.attachMode = (info && info.mode) || null;
-  dom.attachDot.classList.toggle('is-on', state.attached);
-  dom.attachStatusText.textContent = state.attached
-    ? `attached · ${info.target || info.mode}`
-    : (info && info.reason ? `detached · ${info.reason}` : 'detached');
-}
-
-async function connectTcp() {
-  const host = $('attach-host').value.trim() || '127.0.0.1';
-  const port = Number($('attach-port').value);
-  log(`▸ connecting to ${host}:${port} …`, 'system');
-  const result = await window.pulse.attach({ mode: 'tcp', host, port });
-  if (!result.ok) log(`✖ connect failed: ${result.error}`, 'error');
-  else setMessage(`connected to ${host}:${port}`);
-}
-
-async function probeTcp() {
-  const host = $('attach-host').value.trim() || '127.0.0.1';
-  const port = Number($('attach-port').value);
-  const result = await window.pulse.probe({ host, port, timeout: 2000 });
-  log(
-    result.ok ? `✓ ${host}:${port} reachable in ${result.rtt} ms` : `✖ ${host}:${port} unreachable (${result.error})`,
-    result.ok ? 'ok' : 'error'
-  );
-}
-
-async function sendPayload(kind) {
-  let data = $('attach-payload').value;
-  if (kind === 'code') data = Editor.getValue();
-  const result = await window.pulse.attachSend({ data, encoding: kind === 'hex' ? 'hex' : 'utf8' });
-  if (!result.ok) log(`✖ send failed: ${result.error}`, 'error');
-}
-
-async function attachPid() {
-  const pid = Number($('attach-pid').value);
-  const result = await window.pulse.attach({ mode: 'process', pid });
-  if (!result.ok) log(`✖ attach failed: ${result.error}`, 'error');
-  else log(`▸ watching pid ${pid}`, 'system');
-}
-
-async function startBridge() {
-  const result = await window.pulse.startBridge({ port: 0 });
-  if (!result.ok) { log(`✖ bridge failed: ${result.error}`, 'error'); return; }
-  log(`▸ bridge listening on 127.0.0.1:${result.port}`, 'system');
-  $('attach-port').value = result.port;
-  $('attach-host').value = '127.0.0.1';
-}
-
-async function stopBridge() {
-  await window.pulse.stopBridge();
-}
-
-/* -------------------------------------------------------------- statusbar */
-
-function setMessage(text) {
-  dom.st.message.textContent = text;
-}
-
-function updatePositionFromMonaco() {
-  if (!monacoEditor) return;
-  const position = monacoEditor.getPosition();
-  if (position) dom.st.pos.textContent = `Ln ${position.lineNumber}, Col ${position.column}`;
-}
-
-function updatePosition() {
-  if (monacoEditor) updatePositionFromMonaco();
-  else FallbackEditor.cursor();
-}
-
-function renderStatus() {
-  dom.st.engine.textContent = state.engine === 'monaco' ? 'monaco' : 'pulse-core';
-  if (state.appInfo) {
-    dom.st.platform.textContent = `${state.appInfo.platform}/${state.appInfo.arch} · electron ${state.appInfo.electron}`;
-    dom.appVersion.textContent = `v${state.appInfo.version}`;
-  }
-}
-
-function tick() {
-  const now = new Date();
-  dom.st.time.textContent = now.toLocaleTimeString('en-GB');
-  if (performance && performance.memory) {
-    const mb = performance.memory.usedJSHeapSize / (1024 * 1024);
-    dom.st.mem.textContent = `${mb.toFixed(1)} MB`;
-  }
 }
 
 /* ------------------------------------------------------------------ init */
 
-const SAMPLE = `// ─────────────────────────────────────────────────────────────
-//  PULSE ▸ quick start
-//  Ctrl+Enter  execute   ·   Ctrl+O  open   ·   Ctrl+B  attach
-// ─────────────────────────────────────────────────────────────
+const WELCOME =
+`--[[
+    PULSE  -  Lua executor
+    --------------------------------------------------------------
+    Ctrl+Enter  execute      Ctrl+K   clear
+    Ctrl+O      open file    Ctrl+S   save
+    Ctrl+B      attach       Ctrl+H   script hub
+    --------------------------------------------------------------
+    Pick a script in the Script Hub on the right, or write your own.
+]]
 
-const pulse = {
-  engine: 'Pulse',
-  version: '1.0.0',
-  runners: ['node', 'python', 'powershell', 'cmd', 'bash'],
-};
+local Players = game:GetService("Players")
+local player  = Players.LocalPlayer
 
-function heartbeat(times = 5, bpm = 120) {
-  const delay = 60000 / bpm;
-  for (let i = 1; i <= times; i += 1) {
-    process.stdout.write(\`\\u2661 beat \${i} · \${Math.round(delay)} ms apart\\n\`);
-  }
-}
-
-heartbeat();
-console.log('Pulse is online:', pulse.engine, pulse.version);
-console.log('runners:', pulse.runners.join(', '));
+print("[Pulse] ready - " .. tostring(player and player.Name or "no player"))
 `;
 
-async function initRunners() {
-  const runners = await window.pulse.listRunners();
-  state.runners = runners;
-  dom.runnerSelect.innerHTML = '';
-  runners.forEach((runner) => {
-    const option = document.createElement('option');
-    option.value = runner.id;
-    option.textContent = runner.available ? runner.label : `${runner.label} (not found)`;
-    dom.runnerSelect.appendChild(option);
-  });
-  const preferred = runners.find((r) => r.available && r.id === 'node') || runners.find((r) => r.available);
-  if (preferred) {
-    state.runner = preferred.id;
-    dom.runnerSelect.value = preferred.id;
+async function initRunnerInfo() {
+  const runners = await window.pulse.listRunners().catch(() => []);
+  const lua = runners.find((runner) => runner.id === RUNNER);
+  state.luaAvailable = Boolean(lua && lua.available);
+  renderStatus();
+  if (!state.luaAvailable) {
+    setMessage('lua interpreter not found — scripts can be edited but not executed');
   }
-  dom.runnerMeta.textContent = runners
-    .map((r) => `${r.available ? '●' : '○'} ${r.label}`)
-    .join('\n');
-  dom.runnerMeta.style.whiteSpace = 'pre';
-  dom.statusRunner.textContent = (runners.find((r) => r.id === state.runner) || {}).label || state.runner;
-}
-
-async function initUtilities() {
-  const utilities = await window.pulse.listUtilities().catch(() => []);
-  dom.utilities.innerHTML = '';
-  utilities.forEach((utility) => {
-    const button = document.createElement('button');
-    button.className = 'util';
-    button.textContent = utility.label;
-    button.title = utility.label;
-    button.addEventListener('click', () => runUtility(utility.id, utility.label));
-    dom.utilities.appendChild(button);
-  });
 }
 
 function bindUi() {
@@ -897,75 +1366,36 @@ function bindUi() {
 
   $('btn-execute').addEventListener('click', execute);
   $('btn-clear').addEventListener('click', () => {
-    Editor.setValue('', activeTab() ? activeTab().language : 'plaintext');
+    Editor.setValue('');
+    hideToast();
     setMessage('buffer cleared');
+    updatePosition();
   });
-  $('btn-attach').addEventListener('click', () => toggleAttachPanel());
+  $('btn-attach').addEventListener('click', attach);
   $('btn-open').addEventListener('click', openFile);
   $('btn-save').addEventListener('click', saveFile);
-  $('btn-workspace').addEventListener('click', () => window.pulse.openWorkspace());
+  $('btn-hub').addEventListener('click', () => toggleHub());
 
-  $('btn-stop').addEventListener('click', stopExecution);
-  $('btn-clear-console').addEventListener('click', () => { clearConsole(); setMessage('console cleared'); });
-  $('btn-wrap').addEventListener('click', (event) => {
-    state.wrap = !state.wrap;
-    event.currentTarget.classList.toggle('is-on', state.wrap);
-    Editor.setWrap(state.wrap);
+  $('hub-close').addEventListener('click', () => toggleHub(false));
+  $('hub-search').addEventListener('input', (event) => {
+    state.filter = event.target.value;
+    renderHub();
   });
 
-  dom.runnerSelect.addEventListener('change', (event) => {
-    state.runner = event.target.value;
-    const runner = state.runners.find((r) => r.id === state.runner);
-    dom.statusRunner.textContent = runner ? runner.label : state.runner;
-    const tab = activeTab();
-    if (tab && runner && !tab.path) {
-      tab.language = runner.language;
-      dom.st.lang.textContent = tab.language;
-      Editor.setLanguage(tab.language);
-    }
-    setMessage(`runner → ${state.runner}`);
-  });
+  $('toast-close').addEventListener('click', hideToast);
 
-  // attach panel
-  $('attach-close').addEventListener('click', () => toggleAttachPanel(false));
-  $('attach-connect').addEventListener('click', connectTcp);
-  $('attach-probe').addEventListener('click', probeTcp);
-  $('attach-disconnect').addEventListener('click', async () => {
-    await window.pulse.detach();
-    log('▸ disconnected', 'system');
-  });
-  $('attach-send-line').addEventListener('click', () => sendPayload('line'));
-  $('attach-send-code').addEventListener('click', () => sendPayload('code'));
-  $('attach-send-hex').addEventListener('click', () => sendPayload('hex'));
-  $('attach-pid-go').addEventListener('click', attachPid);
-  $('attach-pid-stop').addEventListener('click', async () => {
-    await window.pulse.detach();
-  });
-  $('bridge-start').addEventListener('click', startBridge);
-  $('bridge-stop').addEventListener('click', stopBridge);
-
-  document.querySelectorAll('.tabs-mini__btn').forEach((button) => {
-    button.addEventListener('click', () => {
-      document.querySelectorAll('.tabs-mini__btn').forEach((b) => b.classList.toggle('is-active', b === button));
-      document.querySelectorAll('.tab-page').forEach((page) => {
-        page.hidden = page.dataset.page !== button.dataset.tab;
-      });
-    });
-  });
-
-  // keyboard
   window.addEventListener('keydown', (event) => {
     const mod = event.ctrlKey || event.metaKey;
     if (!mod) return;
     const key = event.key.toLowerCase();
 
     if (key === 'enter') { event.preventDefault(); execute(); }
-    else if (key === 'k') { event.preventDefault(); Editor.setValue('', activeTab() ? activeTab().language : 'plaintext'); setMessage('buffer cleared'); }
-    else if (key === 'b') { event.preventDefault(); toggleAttachPanel(); }
+    else if (key === 'k') { event.preventDefault(); Editor.setValue(''); hideToast(); setMessage('buffer cleared'); }
+    else if (key === 'b') { event.preventDefault(); attach(); }
     else if (key === 'o') { event.preventDefault(); openFile(); }
     else if (key === 's') { event.preventDefault(); saveFile(); }
+    else if (key === 'h') { event.preventDefault(); toggleHub(); }
     else if (key === 'c' && event.shiftKey) { event.preventDefault(); stopExecution(); }
-    else if (key === 'l') { event.preventDefault(); clearConsole(); }
   });
 
   window.addEventListener('resize', () => Editor.layout());
@@ -973,24 +1403,24 @@ function bindUi() {
 
 function bindIpc() {
   window.pulse.on('pulse:run-output', (payload) => {
-    log(payload.chunk, payload.stream === 'stderr' ? 'stderr' : payload.stream === 'system' ? 'system' : 'stdout', payload.at);
+    if (payload && payload.chunk) state.output.push(String(payload.chunk));
+    if (!dom.toast.hidden) {
+      dom.toastBody.textContent = state.output.join('').slice(-4000);
+      dom.toastBody.scrollTop = dom.toastBody.scrollHeight;
+    }
   });
 
   window.pulse.on('pulse:attach-status', (info) => {
-    setAttachStatus(info);
-    if (info && info.connected) log(`✓ attached · ${info.target || info.mode}`, 'ok');
-    else if (info && info.reason) log(`▸ detached · ${info.reason}`, 'system');
-  });
-
-  window.pulse.on('pulse:attach-data', (payload) => {
-    const level = payload.level === 'error' ? 'error' : payload.level === 'out' ? 'out' : payload.level === 'system' ? 'system' : 'in';
-    log(payload.text, level, payload.at);
-  });
-
-  window.pulse.on('pulse:bridge-status', (info) => {
-    state.bridge = info;
-    dom.bridgeDot.classList.toggle('is-on', Boolean(info && info.running));
-    dom.bridgeText.textContent = info && info.running ? `bridge :${info.port}` : 'bridge offline';
+    if (!info) return;
+    if (info.connected) {
+      state.attachPid = state.attachPid || (info.mode === 'process' ? Number(String(info.target || '').replace(/[^0-9]/g, '')) || null : null);
+      setAttached(true, `attached${info.target ? ` · ${info.target}` : ''}`);
+      $('btn-attach').querySelector('.action__text').textContent = 'Detach';
+    } else {
+      state.attachPid = null;
+      setAttached(false, `not attached · ${info.reason || 'detached'}`);
+      $('btn-attach').querySelector('.action__text').textContent = 'Attach';
+    }
   });
 
   window.pulse.on('pulse:window-state', (info) => {
@@ -1002,46 +1432,36 @@ async function boot() {
   bindUi();
   bindIpc();
   FallbackEditor.init();
-  FallbackEditor.onChange = () => {
-    const tab = activeTab();
-    if (tab) markDirty(tab);
-  };
+  FallbackEditor.onChange = () => markDirty(activeTab());
   FallbackEditor.onCursor = ({ lineNumber, column }) => {
-    dom.st.pos.textContent = `Ln ${lineNumber}, Col ${column}`;
+    dom.stPos.textContent = `Ln ${lineNumber}, Col ${column}`;
   };
 
   setBusyUi(false);
-  addTab({ name: 'quick-start.js', content: SAMPLE, language: 'javascript' });
-
-  tick();
-  setInterval(tick, 1000);
+  setAttached(false);
+  toggleHub(true);
+  addTab({ name: 'script.lua', content: WELCOME });
+  renderHub();
 
   try {
     state.appInfo = await window.pulse.appInfo();
     renderStatus();
-    dom.st.platform.textContent = `${state.appInfo.platform}/${state.appInfo.arch} · electron ${state.appInfo.electron}`;
-    log(`▸ Pulse ${state.appInfo.version} · electron ${state.appInfo.electron} · node ${state.appInfo.node}`, 'system');
-    log(`▸ workspace ${state.appInfo.workspace}`, 'system');
   } catch (error) {
-    log(`✖ cannot read app info: ${error && error.message ? error.message : error}`, 'error');
+    setMessage('cannot read app info');
   }
 
-  await initRunners();
-  await initUtilities();
-  await refreshWorkspace();
+  await initRunnerInfo();
 
   if (state.appInfo && state.appInfo.monacoPath) {
     try {
       monaco = await loadMonaco(state.appInfo.monacoPath);
       buildMonacoEditor();
-      // Re-apply the active tab into the freshly created Monaco instance.
       const tab = activeTab();
       if (tab) {
-        tab.model = monaco.editor.createModel(tab.content, tab.language);
+        tab.model = monaco.editor.createModel(tab.content, LANGUAGE);
         monacoEditor.setModel(tab.model);
       }
-      log('▸ Monaco editor core loaded', 'system');
-      setMessage('monaco editor ready');
+      setMessage(state.luaAvailable ? 'monaco ready · lua ready' : 'monaco ready · lua not found');
     } catch (error) {
       if (monacoEditor) {
         try { monacoEditor.dispose(); } catch (_) { /* already gone */ }
@@ -1050,16 +1470,14 @@ async function boot() {
       }
       dom.fallback.hidden = false;
       state.engine = 'pulse-core';
-      log(`▸ Monaco unavailable (${error && error.message ? error.message : error}) — using the built-in Pulse editor`, 'system');
+      setMessage(`monaco unavailable — built-in ${state.engine} editor active`);
     }
   } else {
-    log('▸ Monaco bundle not found — using the built-in Pulse editor', 'system');
+    setMessage('monaco bundle not found — built-in editor active');
   }
 
   dom.boot.hidden = true;
   renderStatus();
-  Editor.setWrap(state.wrap);
-  $('btn-wrap').classList.toggle('is-on', state.wrap);
   Editor.focus();
   updatePosition();
 }

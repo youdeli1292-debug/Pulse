@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('pulse', {
   attachSend: safe('pulse:attach-send'),
   detach: safe('pulse:detach'),
   probe: safe('pulse:probe'),
+  findRoblox: safe('pulse:find-roblox'),
   startBridge: safe('pulse:start-bridge'),
   stopBridge: safe('pulse:stop-bridge'),
 

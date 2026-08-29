@@ -84,58 +84,52 @@
     <div class="window" id="preview" aria-hidden="true">
       <div class="window__bar">
         <span class="window__dots"><i></i><i></i><i></i></span>
-        <span class="window__title">Pulse — quick-start.js</span>
+        <span class="window__title">Pulse — fly.lua</span>
         <span class="window__badge">800 × 500</span>
       </div>
       <div class="window__body">
         <aside class="window__side">
-          <div class="ws-label">actions</div>
           <div class="ws-btn ws-btn--primary"><b>▶</b> Execute</div>
           <div class="ws-btn"><b>⌫</b> Clear</div>
-          <div class="ws-btn"><b>⛓</b> Attach / Connect</div>
+          <div class="ws-btn"><b>⛓</b> Attach</div>
           <div class="ws-btn"><b>⧉</b> Open File</div>
-          <div class="ws-label">runner</div>
-          <div class="ws-select">Node.js ▾</div>
-          <div class="ws-label">utilities</div>
-          <div class="ws-util">tasklist</div>
-          <div class="ws-util">ipconfig</div>
-          <div class="ws-util">netstat</div>
+          <div class="ws-btn"><b>⤓</b> Save</div>
+          <div class="ws-btn ws-btn--hub"><b>❯❯</b> Script Hub</div>
         </aside>
 
         <div class="window__main">
-          <div class="window__tabs">
-            <span class="wt is-active">quick-start.js</span>
-            <span class="wt">bridge.py</span>
-          </div>
-          <pre class="window__code"><code><span class="c">// PULSE ▸ quick start</span>
-<span class="k">const</span> pulse = { engine: <span class="s">'Pulse'</span>, version: <span class="s">'1.0.0'</span> };
+          <div class="window__tabs"><span class="wt is-active">fly.lua</span><span class="wt">esp.lua</span></div>
+          <pre class="window__code"><code><span class="c">--[[ Pulse - Fly Script ]]</span>
+<span class="k">local</span> Players = <span class="b">game</span>:<span class="f">GetService</span>(<span class="s">"Players"</span>)
+<span class="k">local</span> player  = Players.LocalPlayer
+<span class="k">local</span> SPEED   = <span class="n">60</span>
 
-<span class="k">function</span> <span class="f">heartbeat</span>(times = <span class="n">5</span>) {
-  <span class="k">for</span> (<span class="k">let</span> i = <span class="n">1</span>; i &lt;= times; i += <span class="n">1</span>) {
-    <span class="b">process</span>.stdout.<span class="f">write</span>(<span class="s">`♥ beat ${i}\n`</span>);
-  }
-}
+<span class="k">local</span> <span class="k">function</span> <span class="f">start</span>()
+    <span class="k">local</span> root = player.Character.HumanoidRootPart
+    <span class="k">local</span> bv   = Instance.<span class="f">new</span>(<span class="s">"BodyVelocity"</span>)
+    bv.Velocity = camera.CFrame.LookVector * SPEED
+    bv.Parent   = root
+<span class="k">end</span>
 
-<span class="f">heartbeat</span>();
-<span class="b">console</span>.<span class="f">log</span>(<span class="s">'Pulse is online'</span>, pulse.version);</code></pre>
-          <div class="window__console">
-            <div class="wc-head"><span>console</span><span class="wc-meta">exit 0 · 31 ms</span></div>
-            <div class="wc-body">
-              <div class="wc-line wc-sys">12:04:01.120 ▸ starting Node.js</div>
-              <div class="wc-line">♥ beat 1</div>
-              <div class="wc-line">♥ beat 2</div>
-              <div class="wc-line">♥ beat 3</div>
-              <div class="wc-line">♥ beat 4</div>
-              <div class="wc-line">♥ beat 5</div>
-              <div class="wc-line">Pulse is online 1.0.0</div>
-              <div class="wc-line wc-sys">12:04:01.151 ▸ finished with exit code 0 in 31 ms</div>
-            </div>
-          </div>
+<span class="f">start</span>()
+<span class="b">print</span>(<span class="s">"[Pulse] fly enabled"</span>)</code></pre>
           <div class="window__status">
-            <span>Ln 14, Col 44</span><span>javascript</span><span>monaco</span>
-            <span class="grow">ready</span><span>win32/x64</span><span>12:04:01</span>
+            <span class="wstat-on">Status: Attached</span>
+            <span class="grow">attached to pid 4321</span>
+            <span>Ln 18, Col 24</span><span>lua</span><span>monaco</span>
           </div>
         </div>
+
+        <aside class="window__hub">
+          <div class="wh-head">Script Hub</div>
+          <div class="wh-search">search scripts…</div>
+          <div class="wh-item wh-item--on">Fly Script</div>
+          <div class="wh-item">AimBot</div>
+          <div class="wh-item">ESP</div>
+          <div class="wh-item">SpeedHack</div>
+          <div class="wh-item">Infinite Yield</div>
+          <div class="wh-item">Noclip</div>
+        </aside>
       </div>
     </div>
   </div>
@@ -154,14 +148,12 @@
         <div class="card__icon">⚡</div>
         <h3 data-i18n="feat.fast.title">Fast Execution</h3>
         <p data-i18n="feat.fast.text">
-          Ctrl+Enter sends the buffer to Node.js, Python, PowerShell, CMD or Bash and streams
-          stdout / stderr straight into the console with timestamps and exit codes. Long runs
-          can be cancelled at any moment.
+          Ctrl+Enter sends the Lua buffer to the interpreter and returns the result, the exit code and the elapsed time. Output lands in a floating panel over the editor, and a long script can be cancelled at any moment.
         </p>
         <ul class="card__list">
-          <li data-i18n="feat.fast.l1">live output streaming</li>
+          <li data-i18n="feat.fast.l1">lua / luajit auto-detection</li>
           <li data-i18n="feat.fast.l2">exit code + duration report</li>
-          <li data-i18n="feat.fast.l3">one-click system utilities</li>
+          <li data-i18n="feat.fast.l3">floating output panel</li>
         </ul>
       </article>
 
@@ -169,14 +161,12 @@
         <div class="card__icon">◈</div>
         <h3 data-i18n="feat.ui.title">Custom UI</h3>
         <p data-i18n="feat.ui.text">
-          A fully frameless 800 × 500 neon-violet shell drawn by hand: custom title bar,
-          drag region, window controls, tabs, gutter, scanline overlay and a dark cyberpunk
-          palette that stays readable for hours.
+          A fully frameless 800 × 500 neon-violet shell drawn by hand: custom title bar, drag region, window controls, tabs, gutter, scanline overlay and a compact two-pane layout with no empty space.
         </p>
         <ul class="card__list">
           <li data-i18n="feat.ui.l1">frameless window + custom chrome</li>
-          <li data-i18n="feat.ui.l2">tabs, workspace explorer, status bar</li>
-          <li data-i18n="feat.ui.l3">Attach / Connect side panel</li>
+          <li data-i18n="feat.ui.l2">editor + Script Hub side by side</li>
+          <li data-i18n="feat.ui.l3">slim status bar at the bottom</li>
         </ul>
       </article>
 
@@ -184,12 +174,10 @@
         <div class="card__icon">⌨</div>
         <h3 data-i18n="feat.monaco.title">Monaco Editor Integration</h3>
         <p data-i18n="feat.monaco.text">
-          The same editor engine that powers VS Code: syntax highlighting for 10+ languages,
-          bracket colourisation, suggestions, multi-cursor and a custom <i>pulse-cyber</i>
-          theme — bundled offline inside the app.
+          The same editor engine that powers VS Code, permanently locked to Lua: highlighting, bracket colourisation, suggestions, multi-cursor and a custom pulse-cyber theme — bundled offline inside the app.
         </p>
         <ul class="card__list">
-          <li data-i18n="feat.monaco.l1">offline AMD bundle, no CDN</li>
+          <li data-i18n="feat.monaco.l1">Lua syntax, hardcoded</li>
           <li data-i18n="feat.monaco.l2">custom neon theme &amp; ligatures</li>
           <li data-i18n="feat.monaco.l3">built-in fallback editor</li>
         </ul>
@@ -197,29 +185,27 @@
 
       <article class="card">
         <div class="card__icon">⛓</div>
-        <h3 data-i18n="feat.attach.title">Attach Bridge</h3>
+        <h3 data-i18n="feat.attach.title">Attach &amp; Status</h3>
         <p data-i18n="feat.attach.text">
-          Connect the editor to any TCP endpoint, watch a running process by PID, probe a
-          port or spin up a local echo bridge — the traffic lands in the console in real time.
+          Press Attach and Pulse looks for the Roblox process, binds to it and flips the status bar to a green “Status: Attached”. The badge turns red the moment the game closes.
         </p>
         <ul class="card__list">
-          <li data-i18n="feat.attach.l1">TCP client with raw / hex send</li>
-          <li data-i18n="feat.attach.l2">PID watcher (tasklist / ps)</li>
-          <li data-i18n="feat.attach.l3">port probe with RTT</li>
+          <li data-i18n="feat.attach.l1">automatic Roblox process lookup</li>
+          <li data-i18n="feat.attach.l2">live PID watcher</li>
+          <li data-i18n="feat.attach.l3">green / red status badge</li>
         </ul>
       </article>
 
       <article class="card">
-        <div class="card__icon">⧉</div>
-        <h3 data-i18n="feat.files.title">Files &amp; Workspace</h3>
-        <p data-i18n="feat.files.text">
-          Open several files at once, keep them in tabs, save back to disk or into the Pulse
-          workspace folder, and jump between scripts straight from the sidebar.
+        <div class="card__icon">❯❯</div>
+        <h3 data-i18n="feat.hub.title">Script Hub</h3>
+        <p data-i18n="feat.hub.text">
+          A built-in catalogue of ready-to-run Lua scripts — Fly, AimBot, ESP, SpeedHack, Infinite Yield, Noclip, Anti-AFK. One click loads the source straight into the editor, and the search box filters the list instantly.
         </p>
         <ul class="card__list">
-          <li data-i18n="feat.files.l1">multi-tab editing</li>
-          <li data-i18n="feat.files.l2">language auto-detection</li>
-          <li data-i18n="feat.files.l3">workspace file list</li>
+          <li data-i18n="feat.hub.l1">7 scripts out of the box</li>
+          <li data-i18n="feat.hub.l2">one click, straight into the editor</li>
+          <li data-i18n="feat.hub.l3">instant search + hideable panel</li>
         </ul>
       </article>
 
@@ -274,9 +260,9 @@
         <div>
           <h3 data-i18n="inst.s3.title">Run your first script</h3>
           <p data-i18n="inst.s3.text">
-            Press <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to execute the buffer with the selected
-            runner, <kbd>Ctrl</kbd>+<kbd>O</kbd> to open a file and <kbd>Ctrl</kbd>+<kbd>B</kbd>
-            to open the Attach / Connect panel.
+            Press <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to execute the Lua buffer,
+            <kbd>Ctrl</kbd>+<kbd>H</kbd> to open the Script Hub and pick a script, and
+            <kbd>Ctrl</kbd>+<kbd>B</kbd> to attach to the Roblox process.
           </p>
         </div>
       </li>
@@ -287,7 +273,8 @@
       <div class="shortcut"><kbd>Ctrl</kbd><span>+</span><kbd>O</kbd><em data-i18n="keys.open">Open file</em></div>
       <div class="shortcut"><kbd>Ctrl</kbd><span>+</span><kbd>S</kbd><em data-i18n="keys.save">Save</em></div>
       <div class="shortcut"><kbd>Ctrl</kbd><span>+</span><kbd>K</kbd><em data-i18n="keys.clear">Clear buffer</em></div>
-      <div class="shortcut"><kbd>Ctrl</kbd><span>+</span><kbd>B</kbd><em data-i18n="keys.attach">Attach panel</em></div>
+      <div class="shortcut"><kbd>Ctrl</kbd><span>+</span><kbd>B</kbd><em data-i18n="keys.attach">Attach / Detach</em></div>
+      <div class="shortcut"><kbd>Ctrl</kbd><span>+</span><kbd>H</kbd><em data-i18n="keys.hub">Script Hub</em></div>
       <div class="shortcut"><kbd>F12</kbd><em data-i18n="keys.devtools">DevTools</em></div>
     </div>
 
@@ -321,10 +308,11 @@ npm run dist</pre>
       </p>
     </details>
     <details class="faq">
-      <summary data-i18n="faq.q2">Which interpreters are supported?</summary>
+      <summary data-i18n="faq.q2">Which interpreter runs the scripts?</summary>
       <p data-i18n="faq.a2">
-        Node.js is bundled with the app. Python, PowerShell, CMD and Bash are detected on your
-        system at startup; missing runners are simply marked as unavailable.
+        Pulse looks for lua / luajit on your system at startup and shows the result in the
+        sidebar. Without an interpreter you can still edit and load scripts — execution
+        simply reports “Lua interpreter not found”.
       </p>
     </details>
     <details class="faq">
@@ -335,18 +323,27 @@ npm run dist</pre>
       </p>
     </details>
     <details class="faq">
-      <summary data-i18n="faq.q4">What is the Attach / Connect panel for?</summary>
+      <summary data-i18n="faq.q4">How does Attach work?</summary>
       <p data-i18n="faq.a4">
-        It turns Pulse into a small network client: connect to any TCP endpoint, send text,
-        code or hex payloads, watch a local process by PID, probe a port or start a local echo
-        bridge for testing.
+        Pulse scans the process list (tasklist on Windows, ps on Unix) for RobloxPlayer /
+        RobloxStudio and binds to the PID it finds. The status bar switches between
+        “Status: Not Attached” (red) and “Status: Attached” (green) and follows the process
+        until it exits.
       </p>
     </details>
     <details class="faq">
       <summary data-i18n="faq.q5">Monaco did not load — now what?</summary>
       <p data-i18n="faq.a5">
-        Pulse falls back to its own editor with line numbers and syntax highlighting, so the
-        app stays usable. Check the console tab for the exact reason.
+        Pulse falls back to its own editor with line numbers and Lua syntax highlighting, so
+        the app stays fully usable.
+      </p>
+    </details>
+    <details class="faq">
+      <summary data-i18n="faq.q6">What is inside the Script Hub?</summary>
+      <p data-i18n="faq.a6">
+        Seven commented Lua templates built only on the documented Roblox API — movement,
+        visuals and an admin command bar. They are meant for your own places and private
+        servers: no network calls, no data collection, every effect is reversible.
       </p>
     </details>
   </div>

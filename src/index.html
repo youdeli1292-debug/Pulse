@@ -4,19 +4,19 @@
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file:; font-src 'self' data:; connect-src 'self' ws: wss:; worker-src 'self' blob:;" />
-  <title>Pulse — Code Editor &amp; Extension Manager</title>
+  <title>Pulse</title>
   <link rel="stylesheet" href="ui.css" />
 </head>
 <body>
   <div id="app" class="app">
 
     <!-- ===================== custom title bar ===================== -->
-    <header class="titlebar" id="titlebar">
+    <header class="titlebar">
       <div class="titlebar__left">
         <span class="logo-mark" aria-hidden="true">
-          <svg viewBox="0 0 64 64" width="18" height="18">
+          <svg viewBox="0 0 64 64" width="15" height="15">
             <path d="M2 32h11l5-14 8 28 7-21 5 7h24" fill="none" stroke="currentColor"
-                  stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+                  stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
         </span>
         <span class="titlebar__title">PULSE</span>
@@ -24,8 +24,8 @@
       </div>
 
       <div class="titlebar__center">
-        <span class="crumb" id="status-file">untitled.js</span>
-        <span class="crumb crumb--dim" id="status-runner">Node.js</span>
+        <span class="crumb" id="status-file">script.lua</span>
+        <span class="crumb crumb--dim">lua</span>
       </div>
 
       <div class="titlebar__right">
@@ -41,18 +41,16 @@
       </div>
     </header>
 
-    <!-- ============================ body ============================-->
+    <!-- ============================ body ============================ -->
     <div class="body">
 
       <!-- ------------------------------ sidebar ---------------------- -->
-      <aside class="sidebar" id="sidebar">
-        <div class="sidebar__section">
-          <div class="sidebar__label">actions</div>
-
+      <aside class="sidebar">
+        <div class="sidebar__group">
           <button class="action action--primary" id="btn-execute">
             <span class="action__icon">▶</span>
             <span class="action__text">Execute</span>
-            <span class="action__hint">Ctrl+Enter</span>
+            <span class="action__hint">Ctrl+↵</span>
           </button>
 
           <button class="action" id="btn-clear">
@@ -63,7 +61,7 @@
 
           <button class="action" id="btn-attach">
             <span class="action__icon">⛓</span>
-            <span class="action__text">Attach / Connect</span>
+            <span class="action__text">Attach</span>
             <span class="action__hint">Ctrl+B</span>
           </button>
 
@@ -78,158 +76,77 @@
             <span class="action__text">Save</span>
             <span class="action__hint">Ctrl+S</span>
           </button>
-        </div>
 
-        <div class="sidebar__section">
-          <div class="sidebar__label">runner</div>
-          <select class="select" id="runner-select" aria-label="Execution runner"></select>
-          <div class="runner-meta" id="runner-meta">detecting interpreters…</div>
-        </div>
-
-        <div class="sidebar__section">
-          <div class="sidebar__label">system utilities</div>
-          <div class="utilities" id="utilities"></div>
-        </div>
-
-        <div class="sidebar__section sidebar__section--grow">
-          <div class="sidebar__label">workspace</div>
-          <div class="filelist" id="filelist"></div>
-          <button class="action action--ghost" id="btn-workspace">
-            <span class="action__icon">⧉</span>
-            <span class="action__text">Open workspace folder</span>
+          <button class="action action--hub" id="btn-hub">
+            <span class="action__icon">❯❯</span>
+            <span class="action__text">Script Hub</span>
+            <span class="action__hint">Ctrl+H</span>
           </button>
         </div>
 
-        <div class="sidebar__footer">
-          <div class="link-row">
-            <span class="dot" id="attach-dot"></span>
-            <span id="attach-status-text">detached</span>
-          </div>
-          <div class="link-row link-row--dim" id="bridge-row">
-            <span class="dot dot--muted"></span>
-            <span id="bridge-text">bridge offline</span>
-          </div>
+        <div class="sidebar__foot">
+          <div class="mini-row"><span class="mini-key">engine</span><span id="side-engine">monaco</span></div>
+          <div class="mini-row"><span class="mini-key">target</span><span id="side-target">—</span></div>
+          <div class="mini-row"><span class="mini-key">lua</span><span id="side-lua">checking…</span></div>
         </div>
       </aside>
 
       <!-- ------------------------------ editor ---------------------- -->
-      <main class="main">
+      <main class="editor-pane">
         <div class="tabs" id="tabs"></div>
 
-        <div class="editor-shell">
-          <div class="editor-host" id="editor-host">
-            <!-- Monaco is injected here; until (or if) it is unavailable the
-                 built-in Pulse editor is used, which mirrors the same API. -->
-            <div class="pulse-editor" id="pulse-editor">
-              <div class="pulse-editor__gutter" id="gutter"></div>
-              <div class="pulse-editor__scroll">
-                <pre class="pulse-editor__highlight" id="highlight" aria-hidden="true"><code></code></pre>
-                <textarea id="code" class="pulse-editor__input" spellcheck="false"
-                          autocomplete="off" autocapitalize="off" wrap="off"></textarea>
-              </div>
-            </div>
-            <div class="editor-boot" id="editor-boot">
-              <span class="spinner"></span> initialising editor core…
+        <div class="editor-host" id="editor-host">
+          <!-- Monaco is injected here; the built-in Pulse editor is used when
+               the Monaco bundle is unavailable. Language is always Lua. -->
+          <div class="pulse-editor" id="pulse-editor">
+            <div class="pulse-editor__gutter" id="gutter"></div>
+            <div class="pulse-editor__scroll">
+              <pre class="pulse-editor__highlight" id="highlight" aria-hidden="true"><code></code></pre>
+              <textarea id="code" class="pulse-editor__input" spellcheck="false"
+                        autocomplete="off" autocapitalize="off" wrap="off"></textarea>
             </div>
           </div>
+          <div class="editor-boot" id="editor-boot">
+            <span class="spinner"></span> initialising editor core…
+          </div>
 
-          <!-- -------------------- attach panel -------------------- -->
-          <section class="attach-panel" id="attach-panel" hidden>
-            <div class="attach-panel__head">
-              <span class="attach-panel__title">Attach / Connect</span>
-              <button class="icon-btn" id="attach-close" title="Close panel">✕</button>
+          <div class="toast" id="toast" hidden>
+            <div class="toast__head">
+              <span id="toast-title">output</span>
+              <button class="icon-btn" id="toast-close" title="Close">✕</button>
             </div>
+            <pre class="toast__body" id="toast-body"></pre>
+          </div>
+        </div>
+      </main>
 
-            <div class="attach-panel__body">
-              <div class="tabs-mini" role="tablist">
-                <button class="tabs-mini__btn is-active" data-mode="tcp" data-tab="tcp">TCP endpoint</button>
-                <button class="tabs-mini__btn" data-mode="process" data-tab="process">Process (PID)</button>
-                <button class="tabs-mini__btn" data-mode="bridge" data-tab="bridge">Local bridge</button>
-              </div>
-
-              <div class="tab-page" data-page="tcp">
-                <div class="field-row">
-                  <label class="field">
-                    <span>host</span>
-                    <input type="text" id="attach-host" value="127.0.0.1" spellcheck="false" />
-                  </label>
-                  <label class="field field--small">
-                    <span>port</span>
-                    <input type="number" id="attach-port" value="9229" min="1" max="65535" />
-                  </label>
-                </div>
-                <div class="btn-row">
-                  <button class="btn btn--neon" id="attach-connect">Connect</button>
-                  <button class="btn" id="attach-probe">Probe</button>
-                  <button class="btn btn--danger" id="attach-disconnect">Disconnect</button>
-                </div>
-                <div class="field">
-                  <span>payload to send</span>
-                  <textarea id="attach-payload" class="mini-input" rows="2" spellcheck="false">PULSE ping</textarea>
-                </div>
-                <div class="btn-row">
-                  <button class="btn" id="attach-send-line">Send line</button>
-                  <button class="btn" id="attach-send-code">Send editor buffer</button>
-                  <button class="btn" id="attach-send-hex">Send hex</button>
-                </div>
-              </div>
-
-              <div class="tab-page" data-page="process" hidden>
-                <div class="field-row">
-                  <label class="field field--small">
-                    <span>pid</span>
-                    <input type="number" id="attach-pid" value="1" min="1" />
-                  </label>
-                  <label class="field">
-                    <span>attach to a running OS process and watch it</span>
-                    <input type="text" id="attach-pid-note" value="polls tasklist / ps every 2 s" readonly />
-                  </label>
-                </div>
-                <div class="btn-row">
-                  <button class="btn btn--neon" id="attach-pid-go">Attach to PID</button>
-                  <button class="btn btn--danger" id="attach-pid-stop">Stop watching</button>
-                </div>
-              </div>
-
-              <div class="tab-page" data-page="bridge" hidden>
-                <p class="hint">
-                  Start a local TCP echo bridge to test the attach pipeline: it upper-cases every
-                  line a connected client sends and streams the traffic into the console.
-                </p>
-                <div class="btn-row">
-                  <button class="btn btn--neon" id="bridge-start">Start bridge</button>
-                  <button class="btn btn--danger" id="bridge-stop">Stop bridge</button>
-                </div>
-              </div>
-            </div>
-          </section>
+      <!-- --------------------------- script hub --------------------- -->
+      <aside class="hub" id="hub">
+        <div class="hub__head">
+          <span class="hub__title">Script Hub</span>
+          <button class="icon-btn" id="hub-close" title="Hide Script Hub">✕</button>
         </div>
 
-        <!-- ------------------------------ console ------------------ -->
-        <section class="console">
-          <div class="console__head">
-            <span class="console__title">console</span>
-            <span class="console__meta" id="console-meta">idle</span>
-            <div class="console__actions">
-              <button class="chip" id="btn-stop" title="Stop running process (Ctrl+Shift+C)">■ Stop</button>
-              <button class="chip" id="btn-clear-console" title="Clear console">⌫ Clear</button>
-              <button class="chip" id="btn-wrap" title="Toggle word wrap">⏎ Wrap</button>
-            </div>
-          </div>
-          <div class="console__body" id="console"></div>
-        </section>
-      </main>
+        <div class="hub__search">
+          <input type="text" id="hub-search" placeholder="search scripts…" spellcheck="false" />
+        </div>
+
+        <div class="hub__list" id="hub-list"></div>
+
+        <div class="hub__foot">
+          <span id="hub-count">0 scripts</span>
+          <span class="hub__note">click to load</span>
+        </div>
+      </aside>
     </div>
 
-    <!-- ============================ status bar ===================== -->
+    <!-- ========================== status bar ========================= -->
     <footer class="statusbar">
+      <span class="status-badge" id="st-status">Status: Not Attached</span>
+      <span class="status__msg" id="st-message">ready</span>
       <span class="status__item" id="st-pos">Ln 1, Col 1</span>
-      <span class="status__item" id="st-lang">javascript</span>
+      <span class="status__item status__item--lang">lua</span>
       <span class="status__item" id="st-engine">monaco</span>
-      <span class="status__item status__item--grow" id="st-message">ready</span>
-      <span class="status__item" id="st-mem">—</span>
-      <span class="status__item" id="st-platform">—</span>
-      <span class="status__item" id="st-time">--:--:--</span>
     </footer>
   </div>
 

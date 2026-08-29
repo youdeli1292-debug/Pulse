@@ -34,6 +34,17 @@ const IS_WIN = process.platform === 'win32';
  * `argv` receives the absolute path of the temporary script file.
  */
 const RUNNERS = {
+  lua: {
+    id: 'lua',
+    label: 'Lua',
+    extension: '.lua',
+    language: 'lua',
+    binary: () => (IS_WIN ? 'lua' : 'lua5.1'),
+    argv: (file) => [file],
+    fallbacks: IS_WIN
+      ? ['lua5.4', 'lua54', 'lua5.3', 'lua53', 'lua5.2', 'lua52', 'lua5.1', 'lua51', 'luajit']
+      : ['lua', 'luajit', 'lua5.4', 'lua5.3', 'lua5.2', 'lua5.1'],
+  },
   node: {
     id: 'node',
     label: 'Node.js',
@@ -269,35 +280,79 @@ function runStreamed({ sender, runId, file, binary, args, options }) {
   });
 }
 
-function runnerAvailable(runnerId) {
-  return new Promise((resolve) => {
-    const runner = RUNNERS[runnerId];
-    if (!runner) return resolve(false);
-    if (runner.windowsOnly && !IS_WIN) return resolve(false);
-    if (runner.unixOnly && IS_WIN) return resolve(false);
+/** Command line that prints the version of a runner (used only for probing). */
+function versionArgs(runnerId) {
+  if (runnerId === 'node') return ['-v'];
+  if (runnerId === 'python') return ['--version'];
+  if (runnerId === 'lua') return ['-v'];
+  if (runnerId === 'powershell') {
+    return ['-NoProfile', '-NonInteractive', '-Command', '$PSVersionTable.PSVersion.ToString()'];
+  }
+  return ['--version'];
+}
 
-    const probe = (bin, useFallback) => {
-      const args = runnerId === 'node' ? ['-v'] : runnerId === 'python' ? ['--version'] : ['-NoProfile', '-NonInteractive', '-Command', '$PSVersionTable.PSVersion.ToString()'];
-      const child = spawn(bin, args, { windowsHide: true });
-      let out = '';
-      let settled = false;
-      const done = (ok) => {
-        if (settled) return;
-        settled = true;
-        resolve(ok);
-      };
-      child.on('error', () => {
-        if (!useFallback && runner.fallbackBinary) probe(runner.fallbackBinary, true);
-        else done(false);
-      });
-      if (child.stdout) child.stdout.on('data', (d) => { out += d.toString(); });
-      if (child.stderr) child.stderr.on('data', (d) => { out += d.toString(); });
-      child.on('close', (code) => done(code === 0 || out.trim().length > 0));
-      setTimeout(() => { try { child.kill(); } catch (_) {} done(out.trim().length > 0); }, 4000);
+function binaryCandidates(runner) {
+  const list = [typeof runner.binary === 'function' ? runner.binary() : runner.binary];
+  if (runner.fallbackBinary) list.push(runner.fallbackBinary);
+  if (runner.fallbacks) list.push(...runner.fallbacks);
+  return list;
+}
+
+/** id -> binary that actually works on this machine (null when nothing found). */
+const runnerBinaries = new Map();
+
+function detectRunner(runnerId) {
+  const runner = RUNNERS[runnerId];
+  if (!runner) return Promise.resolve(null);
+  if (runner.windowsOnly && !IS_WIN) return Promise.resolve(null);
+  if (runner.unixOnly && IS_WIN) return Promise.resolve(null);
+  if (runnerBinaries.has(runnerId)) return Promise.resolve(runnerBinaries.get(runnerId));
+
+  const candidates = binaryCandidates(runner);
+
+  const attempt = (index) => new Promise((resolve) => {
+    if (index >= candidates.length) {
+      runnerBinaries.set(runnerId, null);
+      resolve(null);
+      return;
+    }
+    const bin = candidates[index];
+    let out = '';
+    let settled = false;
+    let child;
+    const done = (value) => {
+      if (settled) return;
+      settled = true;
+      if (value) runnerBinaries.set(runnerId, value);
+      resolve(value);
     };
-
-    probe(typeof runner.binary === 'function' ? runner.binary() : runner.binary, false);
+    try {
+      child = spawn(bin, versionArgs(runnerId), { windowsHide: true });
+    } catch (_) {
+      attempt(index + 1).then(resolve);
+      return;
+    }
+    if (child.stdout) child.stdout.on('data', (d) => { out += d.toString(); });
+    if (child.stderr) child.stderr.on('data', (d) => { out += d.toString(); });
+    child.on('error', () => { try { child.kill(); } catch (_) {} attempt(index + 1).then(resolve); });
+    child.on('close', (code) => {
+      if (code === 0 || out.trim().length > 0) done(bin);
+      else attempt(index + 1).then(resolve);
+    });
+    setTimeout(() => { try { child.kill(); } catch (_) {} attempt(index + 1).then(resolve); }, 4000);
   });
+
+  return attempt(0);
+}
+
+function runnerAvailable(runnerId) {
+  return detectRunner(runnerId).then((binary) => Boolean(binary));
+}
+
+function robloxProcessNames() {
+  return IS_WIN
+    ? ['RobloxPlayerBeta.exe', 'RobloxStudio.exe', 'RobloxPlayer.exe']
+    : ['RobloxPlayer', 'RobloxStudio', 'Roblox'];
 }
 
 function listWorkspace() {
@@ -578,6 +633,43 @@ ipcMain.handle('pulse:read-file', (_event, filePath) => {
   }
 });
 
+ipcMain.handle('pulse:find-roblox', () =>
+  new Promise((resolve) => {
+    const names = robloxProcessNames();
+    const match = (name) => names.some((n) => name.toLowerCase().includes(n.toLowerCase().replace(/\.exe$/, '')));
+
+    if (IS_WIN) {
+      execFile('tasklist.exe', ['/FO', 'CSV', '/NH'], { windowsHide: true, timeout: 8000 }, (error, stdout) => {
+        if (error) { resolve({ ok: false, error: error.message, processes: [] }); return; }
+        const processes = [];
+        String(stdout).split(/\r?\n/).forEach((line) => {
+          const cols = line.split('","');
+          if (cols.length < 2) return;
+          const name = cols[0].replace(/^"/, '').trim();
+          const pid = Number(String(cols[1]).replace(/"/g, '').trim());
+          if (pid > 0 && match(name)) processes.push({ pid, name });
+        });
+        resolve({ ok: true, processes, pids: processes.map((p) => p.pid) });
+      });
+      return;
+    }
+
+    execFile('ps', ['-eo', 'pid=,comm='], { windowsHide: true, timeout: 8000 }, (error, stdout) => {
+      if (error) { resolve({ ok: false, error: error.message, processes: [] }); return; }
+      const processes = [];
+      String(stdout).split(/\r?\n/).forEach((line) => {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+        const [pidPart, ...rest] = trimmed.split(/\s+/);
+        const pid = Number(pidPart);
+        const name = rest.join(' ');
+        if (pid > 0 && match(name)) processes.push({ pid, name });
+      });
+      resolve({ ok: true, processes, pids: processes.map((p) => p.pid) });
+    });
+  })
+);
+
 ipcMain.handle('pulse:list-workspace', () => listWorkspace());
 
 ipcMain.handle('pulse:show-in-folder', (_event, filePath) => {
@@ -607,7 +699,7 @@ ipcMain.handle('pulse:list-runners', async () => {
       available: await runnerAvailable(id),
     }))
   );
-  runnerProbeCache = results.filter((r) => r.available || r.id === 'node' || r.id === 'powershell');
+  runnerProbeCache = results.filter((r) => r.available || r.id === 'node' || r.id === 'powershell' || r.id === 'lua');
   return runnerProbeCache;
 });
 
@@ -628,6 +720,17 @@ ipcMain.handle('pulse:run', async (event, payload = {}) => {
     at: timestamp(),
   });
 
+  const binary = await detectRunner(runner.id);
+  if (!binary) {
+    sender.send('pulse:run-output', {
+      runId,
+      stream: 'system',
+      chunk: `pulse \u25b8 ${runner.label} interpreter was not found on this machine\n`,
+      at: timestamp(),
+    });
+    return { runId, runner: runner.id, ok: false, exitCode: null, signal: null, duration: 0, error: `${runner.label} interpreter not found` };
+  }
+
   // A file that was opened from disk is executed directly (so relative paths
   // and imports keep working); untitled buffers are written to the workspace.
   let scriptPath;
@@ -643,7 +746,7 @@ ipcMain.handle('pulse:run', async (event, payload = {}) => {
     sender,
     runId,
     file: temporary ? scriptPath : null,
-    binary: typeof runner.binary === 'function' ? runner.binary() : runner.binary,
+    binary: await detectRunner(runner.id),
     args: runner.argv(scriptPath),
   });
 
