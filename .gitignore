@@ -1,0 +1,30 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+release/
+build/
+out/
+
+# electron-builder cache
+*.log
+.electron-builder/
+
+# OS junk
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# editors
+.vscode/
+.idea/
+*.swp
+
+# compiled core / native bridge build output
+PulseCore/bin/*.dll
+PulseCore/bin/*.exe
+PulseCore/bin/*.pdb
+PulseCore/bridge/build/
+PulseCore/host/build/
+PulseCore/core/

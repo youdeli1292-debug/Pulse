@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pulse — advanced code editor &amp; extension manager</title>
+<meta name="description" content="Pulse is a frameless dark-cyberpunk Lua executor for Roblox built around the Xeno C++ core: Monaco locked to Lua, one-keystroke execution, Script Hub and a live attached status." />
+<meta name="theme-color" content="#0a0713" />
+<meta property="og:title" content="Pulse — advanced code editor &amp; extension manager" />
+<meta property="og:description" content="Frameless neon executor · Lua only · Xeno C++ core (FFI / child_process) · live Status: Attached badge." />
+<meta property="og:image" content="assets/og-image.jpg" />
+<meta property="og:type" content="website" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M2 32h11l5-14 8 28 7-21 5 7h24' fill='none' stroke='%23a855f7' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+
+<div class="grid-bg" aria-hidden="true"></div>
+
+<!-- ======================================================= navigation === -->
+<header class="nav">
+  <a class="brand" href="#top">
+    <span class="brand__mark" aria-hidden="true">
+      <svg viewBox="0 0 64 64" width="22" height="22">
+        <path d="M2 32h11l5-14 8 28 7-21 5 7h24" fill="none" stroke="currentColor"
+              stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </span>
+    <span class="brand__name">PULSE</span>
+  </a>
+
+  <nav class="nav__links">
+    <a href="#features" data-i18n="nav.features">Features</a>
+    <a href="#preview" data-i18n="nav.preview">Preview</a>
+    <a href="#install" data-i18n="nav.install">Install</a>
+    <a href="#faq" data-i18n="nav.faq">FAQ</a>
+    <a class="nav__ghost" href="https://github.com/youdeli1292-debug/Pulse" target="_blank" rel="noopener">GitHub</a>
+  </nav>
+
+  <button class="lang" id="lang-toggle" type="button" aria-label="Switch language">
+    <span id="lang-label">RU</span>
+  </button>
+</header>
+
+<!-- ============================================================== hero === -->
+<section class="hero" id="top">
+  <div class="hero__glow" aria-hidden="true"></div>
+
+  <div class="hero__inner">
+    <span class="tag">
+      <span class="tag__dot"></span>
+      <span data-i18n="hero.tag">v1.0.0 · Windows portable · open source</span>
+    </span>
+
+    <h1 class="hero__title">
+      <span data-i18n="hero.title1">Code at the speed</span><br />
+      <span class="hero__accent" data-i18n="hero.title2">of a heartbeat</span>
+    </h1>
+
+    <p class="hero__lead" data-i18n="hero.lead">
+      Pulse is a frameless desktop code editor with a Monaco core, one-keystroke
+      built around the Xeno C++ core: scripts go straight into the game over the
+      compiled bridge.
+      Dark cyberpunk UI, zero setup, single portable executable.
+    </p>
+
+    <div class="hero__cta">
+      <a class="btn btn--primary" id="download-btn"
+         href="https://github.com/youdeli1292-debug/Pulse/releases/latest/download/Pulse-1.0.0-x64-portable.exe">
+        <span class="btn__icon" aria-hidden="true">↓</span>
+        <span data-i18n="hero.download">Download Pulse</span>
+      </a>
+      <a class="btn btn--ghost" href="https://github.com/youdeli1292-debug/Pulse/releases" target="_blank" rel="noopener">
+        <span data-i18n="hero.allreleases">All releases</span>
+      </a>
+    </div>
+
+    <div class="hero__meta">
+      <span><b>~85 MB</b> <span data-i18n="hero.meta1">portable .exe</span></span>
+      <span><b>Windows 10/11</b> <span data-i18n="hero.meta2">x64 · no admin rights</span></span>
+      <span><b>MIT</b> <span data-i18n="hero.meta3">license</span></span>
+    </div>
+
+    <!-- ------------------------------ app window mockup ----------------- -->
+    <div class="window" id="preview" aria-hidden="true">
+      <div class="window__bar">
+        <span class="window__dots"><i></i><i></i><i></i></span>
+        <span class="window__title">Pulse — fly.lua</span>
+        <span class="window__badge">800 × 500</span>
+      </div>
+      <div class="window__body">
+        <aside class="window__side">
+          <div class="ws-btn ws-btn--primary"><b>▶</b> Execute</div>
+          <div class="ws-btn"><b>⌫</b> Clear</div>
+          <div class="ws-btn"><b>⛓</b> Attach</div>
+          <div class="ws-btn"><b>⧉</b> Open File</div>
+          <div class="ws-btn ws-btn--hub"><b>❯❯</b> Script Hub</div>
+        </aside>
+
+        <div class="window__main">
+          <div class="window__tabs"><span class="wt is-active">fly.lua</span><span class="wt">esp.lua</span></div>
+          <pre class="window__code"><code><span class="c">--[[ Pulse - Fly Script ]]</span>
+<span class="k">local</span> Players = <span class="b">game</span>:<span class="f">GetService</span>(<span class="s">"Players"</span>)
+<span class="k">local</span> player  = Players.LocalPlayer
+<span class="k">local</span> SPEED   = <span class="n">60</span>
+
+<span class="k">local</span> <span class="k">function</span> <span class="f">start</span>()
+    <span class="k">local</span> root = player.Character.HumanoidRootPart
+    <span class="k">local</span> bv   = Instance.<span class="f">new</span>(<span class="s">"BodyVelocity"</span>)
+    bv.Velocity = camera.CFrame.LookVector * SPEED
+    bv.Parent   = root
+<span class="k">end</span>
+
+<span class="f">start</span>()
+<span class="b">print</span>(<span class="s">"[Pulse] fly enabled"</span>)</code></pre>
+          <div class="window__status">
+            <span class="wstat-on">Status: Attached</span>
+            <span class="grow">core: Xeno.dll · 2 clients</span>
+            <span>Ln 18, Col 24</span><span>lua</span><span>monaco</span>
+          </div>
+        </div>
+
+        <aside class="window__hub">
+          <div class="wh-head">Script Hub</div>
+          <div class="wh-search">search scripts…</div>
+          <div class="wh-item wh-item--on">Fly Script</div>
+          <div class="wh-item">AimBot</div>
+          <div class="wh-item">ESP</div>
+          <div class="wh-item">SpeedHack</div>
+          <div class="wh-item">Infinite Yield</div>
+          <div class="wh-item">Noclip</div>
+        </aside>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================================================== features === -->
+<section class="section" id="features">
+  <div class="wrap">
+    <h2 class="section__title" data-i18n="feat.title">Everything you need. Nothing you don't.</h2>
+    <p class="section__lead" data-i18n="feat.lead">
+      Pulse ships as one portable executable: no installers, no registry, no admin rights.
+    </p>
+
+    <div class="cards">
+      <article class="card">
+        <div class="card__icon">⚡</div>
+        <h3 data-i18n="feat.fast.title">Fast Execution</h3>
+        <p data-i18n="feat.fast.text">
+          Ctrl+Enter sends the Lua buffer to the interpreter and returns the result, the exit code and the elapsed time. Output lands in a floating panel over the editor, and a long script can be cancelled at any moment.
+        </p>
+        <ul class="card__list">
+          <li data-i18n="feat.fast.l1">lua / luajit auto-detection</li>
+          <li data-i18n="feat.fast.l2">exit code + duration report</li>
+          <li data-i18n="feat.fast.l3">floating output panel</li>
+        </ul>
+      </article>
+
+      <article class="card card--accent">
+        <div class="card__icon">◈</div>
+        <h3 data-i18n="feat.ui.title">Custom UI</h3>
+        <p data-i18n="feat.ui.text">
+          A fully frameless 800 × 500 neon-violet shell drawn by hand: custom title bar, drag region, window controls, tabs, gutter, scanline overlay and a compact two-pane layout with no empty space.
+        </p>
+        <ul class="card__list">
+          <li data-i18n="feat.ui.l1">frameless window + custom chrome</li>
+          <li data-i18n="feat.ui.l2">editor + Script Hub side by side</li>
+          <li data-i18n="feat.ui.l3">slim status bar at the bottom</li>
+        </ul>
+      </article>
+
+      <article class="card">
+        <div class="card__icon">⌨</div>
+        <h3 data-i18n="feat.monaco.title">Monaco Editor Integration</h3>
+        <p data-i18n="feat.monaco.text">
+          The same editor engine that powers VS Code, permanently locked to Lua: highlighting, bracket colourisation, suggestions, multi-cursor and a custom pulse-cyber theme — bundled offline inside the app.
+        </p>
+        <ul class="card__list">
+          <li data-i18n="feat.monaco.l1">Lua syntax, hardcoded</li>
+          <li data-i18n="feat.monaco.l2">custom neon theme &amp; ligatures</li>
+          <li data-i18n="feat.monaco.l3">built-in fallback editor</li>
+        </ul>
+      </article>
+
+      <article class="card">
+        <div class="card__icon">⛓</div>
+        <h3 data-i18n="feat.attach.title">Attach &amp; Status</h3>
+        <p data-i18n="feat.attach.text">
+          Press Attach and Pulse boots the Xeno C++ core — Xeno.dll loaded in-process, PulseCore.exe spawned with child_process, or a core already listening on port 19283 — and flips the status bar to a green “Status: Attached”.
+        </p>
+        <ul class="card__list">
+          <li data-i18n="feat.attach.l1">Xeno.dll loaded in-process (N-API FFI)</li>
+          <li data-i18n="feat.attach.l2">PulseCore.exe / Xeno.exe via child_process</li>
+          <li data-i18n="feat.attach.l3">green / red status badge</li>
+        </ul>
+      </article>
+
+      <article class="card">
+        <div class="card__icon">❯❯</div>
+        <h3 data-i18n="feat.hub.title">Script Hub</h3>
+        <p data-i18n="feat.hub.text">
+          A built-in catalogue of ready-to-run Lua scripts — Fly, AimBot, ESP, SpeedHack, Infinite Yield, Noclip, Anti-AFK. One click loads the source straight into the editor, and the search box filters the list instantly.
+        </p>
+        <ul class="card__list">
+          <li data-i18n="feat.hub.l1">7 scripts out of the box</li>
+          <li data-i18n="feat.hub.l2">one click, straight into the editor</li>
+          <li data-i18n="feat.hub.l3">instant search + hideable panel</li>
+        </ul>
+      </article>
+
+      <article class="card">
+        <div class="card__icon">🛡</div>
+        <h3 data-i18n="feat.secure.title">Safe by Design</h3>
+        <p data-i18n="feat.secure.text">
+          The renderer runs with context isolation and without Node integration. Every
+          privileged action travels through an explicit IPC channel, and interpreters are
+          launched without a shell, so nothing can be injected into your system.
+        </p>
+        <ul class="card__list">
+          <li data-i18n="feat.secure.l1">contextIsolation + preload bridge</li>
+          <li data-i18n="feat.secure.l2">no shell string interpolation</li>
+          <li data-i18n="feat.secure.l3">whitelisted system utilities</li>
+        </ul>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- =========================================================== install === -->
+<section class="section section--alt" id="install">
+  <div class="wrap">
+    <h2 class="section__title" data-i18n="inst.title">Installation</h2>
+    <p class="section__lead" data-i18n="inst.lead">Three steps, about a minute, nothing to configure.</p>
+
+    <ol class="steps">
+      <li class="step">
+        <div class="step__num">1</div>
+        <div>
+          <h3 data-i18n="inst.s1.title">Download the portable build</h3>
+          <p data-i18n="inst.s1.text">
+            Grab <code>Pulse-1.0.0-x64-portable.exe</code> from the releases page. It is a
+            single self-contained file — Pulse leaves no traces in the registry.
+          </p>
+        </div>
+      </li>
+      <li class="step">
+        <div class="step__num">2</div>
+        <div>
+          <h3 data-i18n="inst.s2.title">Put it anywhere and run it</h3>
+          <p data-i18n="inst.s2.text">
+            Copy the .exe to a folder you own (Desktop, D:\Tools, a USB stick) and double-click
+            it. Windows SmartScreen may ask for confirmation on the very first launch — press
+            <b>More info → Run anyway</b>.
+          </p>
+        </div>
+      </li>
+      <li class="step">
+        <div class="step__num">3</div>
+        <div>
+          <h3 data-i18n="inst.s3.title">Run your first script</h3>
+          <p data-i18n="inst.s3.text">
+            Press <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to execute the Lua buffer,
+            <kbd>Ctrl</kbd>+<kbd>H</kbd> to open the Script Hub and pick a script, and
+            <kbd>Ctrl</kbd>+<kbd>B</kbd> to attach the Xeno core.
+          </p>
+        </div>
+      </li>
+    </ol>
+
+    <div class="shortcuts">
+      <div class="shortcut"><kbd>Ctrl</kbd><span>+</span><kbd>Enter</kbd><em data-i18n="keys.run">Execute</em></div>
+      <div class="shortcut"><kbd>Ctrl</kbd><span>+</span><kbd>O</kbd><em data-i18n="keys.open">Open file</em></div>
+      <div class="shortcut"><kbd>Ctrl</kbd><span>+</span><kbd>S</kbd><em data-i18n="keys.save">Save</em></div>
+      <div class="shortcut"><kbd>Ctrl</kbd><span>+</span><kbd>K</kbd><em data-i18n="keys.clear">Clear buffer</em></div>
+      <div class="shortcut"><kbd>Ctrl</kbd><span>+</span><kbd>B</kbd><em data-i18n="keys.attach">Attach / Detach</em></div>
+      <div class="shortcut"><kbd>Ctrl</kbd><span>+</span><kbd>H</kbd><em data-i18n="keys.hub">Script Hub</em></div>
+      <div class="shortcut"><kbd>F12</kbd><em data-i18n="keys.devtools">DevTools</em></div>
+    </div>
+
+    <div class="build-box">
+      <h3 data-i18n="inst.build.title">Building from source</h3>
+      <p data-i18n="inst.build.text">Node.js 18+ is required. Clone the repository and run:</p>
+      <div class="code-block">
+        <button class="copy" type="button" data-copy="cmd-build" data-i18n="ui.copy">copy</button>
+        <pre id="cmd-build">git clone https://github.com/youdeli1292-debug/Pulse.git
+cd Pulse
+npm install
+npm run dist</pre>
+      </div>
+      <p class="hint" data-i18n="inst.build.hint">
+        The finished portable executable appears in <code>dist/</code>.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- =============================================================== faq === -->
+<section class="section" id="faq">
+  <div class="wrap wrap--narrow">
+    <h2 class="section__title" data-i18n="faq.title">FAQ</h2>
+
+    <details class="faq">
+      <summary data-i18n="faq.q1">Do I need admin rights to run Pulse?</summary>
+      <p data-i18n="faq.a1">
+        No. The portable build requests the normal user level and writes only inside your
+        user profile (<code>%APPDATA%\pulse\workspace</code>).
+      </p>
+    </details>
+    <details class="faq">
+      <summary data-i18n="faq.q2">Which interpreter runs the scripts?</summary>
+      <p data-i18n="faq.a2">
+        Pulse looks for lua / luajit on your system at startup and shows the result in the
+        sidebar. Without an interpreter you can still edit and load scripts — execution
+        simply reports “Lua interpreter not found”.
+      </p>
+    </details>
+    <details class="faq">
+      <summary data-i18n="faq.q3">Does Pulse need an internet connection?</summary>
+      <p data-i18n="faq.a3">
+        No. The Monaco bundle, fonts and theme are packaged inside the executable; nothing is
+        loaded from a CDN at runtime.
+      </p>
+    </details>
+    <details class="faq">
+      <summary data-i18n="faq.q4">How does Attach work?</summary>
+      <p data-i18n="faq.a4">
+        Attach tries three routes: the compiled Xeno.dll is loaded straight into the app
+        through the Node-API bridge, otherwise PulseCore.exe is launched with child_process,
+        otherwise Pulse binds to a core that already listens on 127.0.0.1:19283. Clients are
+        reported by the core itself, and the status bar switches between
+        “Status: Not Attached” (red) and “Status: Attached” (green).
+      </p>
+    </details>
+    <details class="faq">
+      <summary data-i18n="faq.q5">Monaco did not load — now what?</summary>
+      <p data-i18n="faq.a5">
+        Pulse falls back to its own editor with line numbers and Lua syntax highlighting, so
+        the app stays fully usable.
+      </p>
+    </details>
+    <details class="faq">
+      <summary data-i18n="faq.q6">What is inside the Script Hub?</summary>
+      <p data-i18n="faq.a6">
+        Seven commented Lua templates built only on the documented Roblox API — movement,
+        visuals and an admin command bar. They are meant for your own places and private
+        servers: no network calls, no data collection, every effect is reversible.
+      </p>
+    </details>
+  </div>
+</section>
+
+<!-- ============================================================ footer === -->
+<footer class="footer">
+  <div class="wrap footer__inner">
+    <div>
+      <div class="brand brand--footer">
+        <span class="brand__mark" aria-hidden="true">
+          <svg viewBox="0 0 64 64" width="20" height="20">
+            <path d="M2 32h11l5-14 8 28 7-21 5 7h24" fill="none" stroke="currentColor"
+                  stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        <span class="brand__name">PULSE</span>
+      </div>
+      <p class="footer__note" data-i18n="footer.note">
+        Built with Electron, Monaco and a lot of neon. MIT licensed.
+      </p>
+    </div>
+    <div class="footer__links">
+      <a href="https://github.com/youdeli1292-debug/Pulse" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/youdeli1292-debug/Pulse/releases" target="_blank" rel="noopener">Releases</a>
+      <a href="https://github.com/youdeli1292-debug/Pulse/issues" target="_blank" rel="noopener">Issues</a>
+    </div>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "name": "pulse-core-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Node-API bridge that loads the compiled Pulse C++ core (PulseCore\bin) into the Pulse Electron shell",
+  "main": "build/Release/pulse_core.node",
+  "gypfile": true,
+  "license": "MIT",
+  "scripts": {
+    "build": "node build.js",
+    "build:node": "node-gyp rebuild",
+    "clean": "node-gyp clean"
+  },
+  "devDependencies": {
+    "node-gyp": "^11.2.0"
+  }
+}

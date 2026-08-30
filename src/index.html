@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file:; font-src 'self' data:; connect-src 'self' http://127.0.0.1:19283 ws: wss:; worker-src 'self' blob:;" />
+  <title>Pulse</title>
+  <link rel="stylesheet" href="ui.css" />
+</head>
+<body>
+  <div id="app" class="app">
+
+    <!-- ===================== custom title bar ===================== -->
+    <header class="titlebar">
+      <div class="titlebar__left">
+        <span class="logo-mark" aria-hidden="true">
+          <svg viewBox="0 0 64 64" width="15" height="15">
+            <path d="M2 32h11l5-14 8 28 7-21 5 7h24" fill="none" stroke="currentColor"
+                  stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </span>
+        <span class="titlebar__title">PULSE</span>
+        <span class="titlebar__badge" id="app-version">v1.0.0</span>
+      </div>
+
+      <div class="titlebar__center">
+        <span class="crumb" id="status-file">script.lua</span>
+        <span class="crumb crumb--dim">lua</span>
+      </div>
+
+      <div class="titlebar__right">
+        <button class="win-btn" id="btn-min" title="Minimize" aria-label="Minimize">
+          <svg viewBox="0 0 10 10" width="10" height="10"><path d="M0 5h10" stroke="currentColor" stroke-width="1.2"/></svg>
+        </button>
+        <button class="win-btn" id="btn-max" title="Maximize" aria-label="Maximize">
+          <svg viewBox="0 0 10 10" width="10" height="10"><rect x="0.6" y="0.6" width="8.8" height="8.8" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+        </button>
+        <button class="win-btn win-btn--close" id="btn-close" title="Close" aria-label="Close">
+          <svg viewBox="0 0 10 10" width="10" height="10"><path d="M0.8 0.8l8.4 8.4M9.2 0.8l-8.4 8.4" stroke="currentColor" stroke-width="1.2"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- ============================ body ============================ -->
+    <div class="body">
+
+      <!-- ------------------------- control panel --------------------- -->
+      <aside class="sidebar">
+        <div class="sidebar__group">
+          <button class="action action--primary" id="btn-execute">
+            <span class="action__icon">▶</span>
+            <span class="action__text">Execute</span>
+            <span class="action__hint">Ctrl+↵</span>
+          </button>
+
+          <button class="action" id="btn-clear">
+            <span class="action__icon">⌫</span>
+            <span class="action__text">Clear</span>
+            <span class="action__hint">Ctrl+K</span>
+          </button>
+
+          <button class="action" id="btn-attach">
+            <span class="action__icon">⛓</span>
+            <span class="action__text">Attach</span>
+            <span class="action__hint">Ctrl+B</span>
+          </button>
+
+          <button class="action" id="btn-open">
+            <span class="action__icon">⧉</span>
+            <span class="action__text">Open File</span>
+            <span class="action__hint">Ctrl+O</span>
+          </button>
+
+          <button class="action action--hub" id="btn-hub">
+            <span class="action__icon">❯❯</span>
+            <span class="action__text">Script Hub</span>
+            <span class="action__hint">Ctrl+H</span>
+          </button>
+        </div>
+
+        <div class="sidebar__foot">
+          <div class="mini-row"><span class="mini-key">core</span><span id="side-core">—</span></div>
+          <div class="mini-row"><span class="mini-key">mode</span><span id="side-mode">offline</span></div>
+          <div class="mini-row"><span class="mini-key">clients</span><span id="side-clients">0</span></div>
+          <div class="mini-row"><span class="mini-key">engine</span><span id="side-engine">monaco</span></div>
+        </div>
+      </aside>
+
+      <!-- ------------------------------ editor ---------------------- -->
+      <main class="editor-pane">
+        <div class="tabs" id="tabs"></div>
+
+        <div class="editor-host" id="editor-host">
+          <!-- Monaco is injected here; the built-in Pulse editor is used when
+               the Monaco bundle is unavailable. Both are locked to Lua. -->
+          <div class="pulse-editor" id="pulse-editor">
+            <div class="pulse-editor__gutter" id="gutter"></div>
+            <div class="pulse-editor__scroll">
+              <pre class="pulse-editor__highlight" id="highlight" aria-hidden="true"><code></code></pre>
+              <textarea id="code" class="pulse-editor__input" spellcheck="false"
+                        autocomplete="off" autocapitalize="off" wrap="off"></textarea>
+            </div>
+          </div>
+          <div class="editor-boot" id="editor-boot">
+            <span class="spinner"></span> initialising editor core…
+          </div>
+
+          <div class="toast" id="toast" hidden>
+            <div class="toast__head">
+              <span id="toast-title">output</span>
+              <button class="icon-btn" id="toast-close" title="Close">✕</button>
+            </div>
+            <pre class="toast__body" id="toast-body"></pre>
+          </div>
+        </div>
+      </main>
+
+      <!-- --------------------------- script hub --------------------- -->
+      <aside class="hub" id="hub">
+        <div class="hub__head">
+          <span class="hub__title">Script Hub</span>
+          <button class="icon-btn" id="hub-close" title="Hide Script Hub">✕</button>
+        </div>
+
+        <div class="hub__search">
+          <input type="text" id="hub-search" placeholder="search scripts…" spellcheck="false" />
+        </div>
+
+        <div class="hub__list" id="hub-list"></div>
+
+        <div class="hub__foot">
+          <span id="hub-count">0 scripts</span>
+          <span class="hub__note">click to load</span>
+        </div>
+      </aside>
+    </div>
+
+    <!-- ========================== status bar ========================= -->
+    <footer class="statusbar">
+      <span class="status-badge" id="st-status">Status: Not Attached</span>
+      <span class="status__clients" id="st-clients">clients: 0</span>
+      <span class="status__msg" id="st-message">ready</span>
+      <span class="status__item" id="st-pos">Ln 1, Col 1</span>
+      <span class="status__item status__item--lang">lua</span>
+      <span class="status__item" id="st-engine">monaco</span>
+    </footer>
+  </div>
+
+  <div class="scanlines" aria-hidden="true"></div>
+
+  <script src="ui.js"></script>
+</body>
+</html>
