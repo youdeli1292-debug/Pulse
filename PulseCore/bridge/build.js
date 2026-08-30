@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * Builds the pulse_xeno native addon against the Electron headers.
+ * Builds the pulse_core native addon against the Electron headers.
  *
- * The addon is what lets main.js call the Xeno C++ core directly
+ * The addon is what lets main.js call the Pulse C++ core directly
  * (Initialize / GetClients / Execute / Compilable) instead of driving the
  * core over its HTTP control plane from a child process.
  *
- *   node Xeno/bridge/build.js            (or: npm run build:xeno from the root)
+ *   node PulseCore/bridge/build.js       (or: npm run build:core from the root)
  *
  * Environment overrides:
  *   PULSE_ELECTRON_VERSION   target Electron version (default: root package.json)
@@ -49,7 +49,7 @@ async function main() {
   const arch = process.env.npm_config_arch || (process.arch === 'ia32' ? 'ia32' : process.arch);
   const distUrl = process.env.npm_config_disturl || 'https://electronjs.org/headers';
 
-  console.log(`▸ building pulse_xeno for Electron ${target} (${process.platform}-${arch})`);
+  console.log(`▸ building pulse_core for Electron ${target} (${process.platform}-${arch})`);
 
   const args = ['rebuild', `--target=${target}`, `--arch=${arch}`, `--dist-url=${distUrl}`];
 
@@ -74,7 +74,7 @@ async function main() {
     process.exit(result.code || 1);
   }
 
-  console.log(`\n✔ pulse_xeno.node is ready — restart Pulse and press Attach.`);
+  console.log(`\n✔ pulse_core.node is ready — restart Pulse and press Attach.`);
 }
 
 main().catch((error) => {

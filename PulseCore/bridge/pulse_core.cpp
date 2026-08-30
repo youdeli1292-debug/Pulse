@@ -1,8 +1,8 @@
-// pulse_xeno.cpp — Node-API bridge between Electron (main.js) and the Xeno
+// pulse_core.cpp — Node-API bridge between Electron (main.js) and the Pulse
 // C++ core.
 //
 // The addon is the "compiled data-exchange module" of Pulse: it loads
-// Xeno.dll into the Electron process with LoadLibrary, resolves the four
+// the core DLL into the Electron process with LoadLibrary, resolves the four
 // exports of the core (Initialize / GetClients / Execute / Compilable) and
 // exposes them to JavaScript.
 //
@@ -14,7 +14,7 @@
 // Build (see build.cmd / build.sh):
 //     node-gyp rebuild --target=<electron version> --dist-url=https://electronjs.org/headers
 
-#include "../include/xeno_api.h"
+#include "../include/pulse_core.h"
 
 #include <node_api.h>
 
@@ -26,24 +26,24 @@
 #if defined(_WIN32)
 #  define WIN32_LEAN_AND_MEAN
 #  include <windows.h>
-using xeno_module = HMODULE;
+using core_module = HMODULE;
 #else
 #  include <dlfcn.h>
-using xeno_module = void*;
+using core_module = void*;
 #endif
 
 namespace {
 
 /* ------------------------------------------------------------------ state */
 
-xeno_module g_module = nullptr;
-std::string g_module_path;
+core_module g_core = nullptr;
+std::string g_core_path;
 std::string g_last_error;
 
-void(XENO_CALL* g_initialize)() = nullptr;
-struct XenoClientInfo*(XENO_CALL* g_get_clients)() = nullptr;
-void(XENO_CALL* g_execute)(const char*, const char**, int) = nullptr;
-const char*(XENO_CALL* g_compilable)(const char*) = nullptr;
+void(PULSE_CORE_CALL* g_initialize)() = nullptr;
+struct PulseClientInfo*(PULSE_CORE_CALL* g_get_clients)() = nullptr;
+void(PULSE_CORE_CALL* g_execute)(const char*, const char**, int) = nullptr;
+const char*(PULSE_CORE_CALL* g_compilable)(const char*) = nullptr;
 
 /* ---------------------------------------------------------------- helpers */
 
@@ -146,7 +146,7 @@ std::wstring utf8_to_wide(const std::string& text) {
   return wide;
 }
 
-xeno_module load_library(const std::string& path, std::string* error) {
+core_module load_library(const std::string& path, std::string* error) {
   HMODULE handle = LoadLibraryW(utf8_to_wide(path).c_str());
   if (!handle) {
     DWORD code = GetLastError();
@@ -159,21 +159,15 @@ xeno_module load_library(const std::string& path, std::string* error) {
   return handle;
 }
 
-void* resolve_symbol(xeno_module handle, const char* name) {
+void* resolve_symbol(core_module handle, const char* name) {
   return reinterpret_cast<void*>(GetProcAddress(handle, name));
 }
 
-void close_library(xeno_module handle) { if (handle) FreeLibrary(handle); }
-
-std::string last_platform_error() {
-  char buffer[256];
-  std::snprintf(buffer, sizeof(buffer), "Win32 error %lu", static_cast<unsigned long>(GetLastError()));
-  return std::string(buffer);
-}
+void close_library(core_module handle) { if (handle) FreeLibrary(handle); }
 
 #else
 
-xeno_module load_library(const std::string& path, std::string* error) {
+core_module load_library(const std::string& path, std::string* error) {
   void* handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
   if (!handle) {
     const char* message = dlerror();
@@ -183,20 +177,15 @@ xeno_module load_library(const std::string& path, std::string* error) {
   return handle;
 }
 
-void* resolve_symbol(xeno_module handle, const char* name) { return dlsym(handle, name); }
+void* resolve_symbol(core_module handle, const char* name) { return dlsym(handle, name); }
 
-void close_library(xeno_module handle) { if (handle) dlclose(handle); }
-
-std::string last_platform_error() {
-  const char* message = dlerror();
-  return message ? std::string(message) : std::string("unknown dynamic loader error");
-}
+void close_library(core_module handle) { if (handle) dlclose(handle); }
 
 #endif
 
 void reset_state() {
-  g_module = nullptr;
-  g_module_path.clear();
+  g_core = nullptr;
+  g_core_path.clear();
   g_initialize = nullptr;
   g_get_clients = nullptr;
   g_execute = nullptr;
@@ -204,8 +193,8 @@ void reset_state() {
 }
 
 bool ensure_loaded(napi_env env) {
-  if (g_module && g_initialize && g_get_clients && g_execute && g_compilable) return true;
-  fail(env, "the Xeno core is not loaded — call load(path) with the path of Xeno.dll first");
+  if (g_core && g_initialize && g_get_clients && g_execute && g_compilable) return true;
+  fail(env, "the core is not loaded — call load(path) with the path of the core DLL first");
   return false;
 }
 
@@ -215,26 +204,26 @@ bool ensure_loaded(napi_env env) {
 napi_value js_load(napi_env env, napi_callback_info info) {
   std::string path;
   if (!argument_string(env, info, 0, &path)) {
-    return fail(env, "load(path): a path to the compiled Xeno core is required");
+    return fail(env, "load(path): a path to the compiled Pulse core is required");
   }
 
-  if (g_module) {
+  if (g_core) {
     std::string next;
     argument_string(env, info, 0, &next);
-    if (next == g_module_path) {
+    if (next == g_core_path) {
       napi_value result;
       if (napi_create_object(env, &result) == napi_ok) {
-        napi_set_named_property(env, result, "path", string_value(env, g_module_path));
+        napi_set_named_property(env, result, "path", string_value(env, g_core_path));
         napi_set_named_property(env, result, "already", boolean_value(env, true));
         return result;
       }
       return null_value(env);
     }
-    return fail(env, "another core is already loaded (" + g_module_path + ") — call unload() first");
+    return fail(env, "another core is already loaded (" + g_core_path + ") — call unload() first");
   }
 
   std::string error;
-  xeno_module handle = load_library(path, &error);
+  core_module handle = load_library(path, &error);
   if (!handle) return fail(env, error);
 
   void* initialize = resolve_symbol(handle, "Initialize");
@@ -250,20 +239,20 @@ napi_value js_load(napi_env env, napi_callback_info info) {
 
   if (!missing.empty()) {
     close_library(handle);
-    return fail(env, "\"" + path + "\" does not export the Xeno API (missing: " + missing + ")");
+    return fail(env, "\"" + path + "\" does not export the core API (missing: " + missing + ")");
   }
 
-  g_module = handle;
-  g_module_path = path;
+  g_core = handle;
+  g_core_path = path;
   g_last_error.clear();
-  g_initialize = reinterpret_cast<void(XENO_CALL*)()>(initialize);
-  g_get_clients = reinterpret_cast<struct XenoClientInfo*(XENO_CALL*)()>(get_clients);
-  g_execute = reinterpret_cast<void(XENO_CALL*)(const char*, const char**, int)>(execute);
-  g_compilable = reinterpret_cast<const char*(XENO_CALL*)(const char*)>(compilable);
+  g_initialize = reinterpret_cast<void(PULSE_CORE_CALL*)()>(initialize);
+  g_get_clients = reinterpret_cast<struct PulseClientInfo*(PULSE_CORE_CALL*)()>(get_clients);
+  g_execute = reinterpret_cast<void(PULSE_CORE_CALL*)(const char*, const char**, int)>(execute);
+  g_compilable = reinterpret_cast<const char*(PULSE_CORE_CALL*)(const char*)>(compilable);
 
   napi_value result;
   if (napi_create_object(env, &result) != napi_ok) return null_value(env);
-  napi_set_named_property(env, result, "path", string_value(env, g_module_path));
+  napi_set_named_property(env, result, "path", string_value(env, g_core_path));
 
   napi_value exported;
   if (napi_create_array_with_length(env, 4, &exported) == napi_ok) {
@@ -280,8 +269,8 @@ napi_value js_load(napi_env env, napi_callback_info info) {
 /** unload() -> boolean */
 napi_value js_unload(napi_env env, napi_callback_info info) {
   (void)info;
-  if (!g_module) return boolean_value(env, false);
-  close_library(g_module);
+  if (!g_core) return boolean_value(env, false);
+  close_library(g_core);
   reset_state();
   return boolean_value(env, true);
 }
@@ -302,12 +291,12 @@ napi_value js_get_clients(napi_env env, napi_callback_info info) {
   napi_value array;
   if (napi_create_array(env, &array) != napi_ok) return null_value(env);
 
-  struct XenoClientInfo* clients = g_get_clients();
+  struct PulseClientInfo* clients = g_get_clients();
   if (!clients) return array;
 
   uint32_t index = 0;
   for (int i = 0; i < 4096; ++i) {
-    const struct XenoClientInfo& entry = clients[i];
+    const struct PulseClientInfo& entry = clients[i];
     if (!entry.Version && !entry.Username && entry.PID == 0) break;  // terminator
 
     napi_value object;
@@ -370,8 +359,8 @@ napi_value js_info(napi_env env, napi_callback_info info) {
   napi_value result;
   if (napi_create_object(env, &result) != napi_ok) return null_value(env);
 
-  napi_set_named_property(env, result, "loaded", boolean_value(env, g_module != nullptr));
-  napi_set_named_property(env, result, "path", string_value(env, g_module_path));
+  napi_set_named_property(env, result, "loaded", boolean_value(env, g_core != nullptr));
+  napi_set_named_property(env, result, "path", string_value(env, g_core_path));
   napi_set_named_property(env, result, "error", string_value(env, g_last_error));
   napi_set_named_property(env, result, "platform",
 #if defined(_WIN32)

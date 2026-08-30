@@ -26,7 +26,7 @@
     "dist:win": "electron-builder --win --x64 --ia32",
     "dist:win64": "electron-builder --win --x64",
     "dist:dir": "electron-builder --dir",
-    "build:xeno": "node Xeno/bridge/build.js"
+    "build:core": "node PulseCore/bridge/build.js"
   },
   "dependencies": {
     "monaco-editor": "^0.56.0"
@@ -50,7 +50,7 @@
       "icon_pulse.ico",
       "src/**/*",
       "node_modules/**/*",
-      "!Xeno/**",
+      "!PulseCore/**",
       "!node_modules/*/{test,__tests__,tests,example,examples}/**",
       "!**/*.map",
       "!**/*.md"
@@ -97,8 +97,8 @@
     "removePackageScripts": true,
     "extraResources": [
       {
-        "from": "Xeno",
-        "to": "Xeno",
+        "from": "PulseCore",
+        "to": "PulseCore",
         "filter": [
           "bin/**/*",
           "bridge/build/**/*.node"

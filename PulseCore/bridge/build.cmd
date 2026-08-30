@@ -1,7 +1,7 @@
 @echo off
 setlocal
-rem Builds the pulse_xeno native addon against the Electron headers.
-rem Equivalent to: npm run build:xeno  (run from the project root)
+rem Builds the pulse_core native addon against the Electron headers.
+rem Equivalent to: npm run build:core  (run from the project root)
 
 pushd "%~dp0"
 

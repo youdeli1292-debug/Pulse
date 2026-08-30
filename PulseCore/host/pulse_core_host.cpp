@@ -1,9 +1,9 @@
-// pulse_core_host.cpp — tiny host process for the Xeno core.
+// pulse_core_host.cpp — tiny host process for the Pulse core.
 //
-// Upstream Xeno builds a single artifact: Xeno.dll (Visual Studio project
-// Xeno/Xeno.vcxproj, ConfigurationType=DynamicLibrary, v143, C++20). Pulse can
-// load that DLL straight into the Electron process through the Node-API
-// bridge in Xeno/bridge, but it is often preferable to keep the core in its
+// The upstream C++ project builds a single artifact: the core DLL (Visual
+// Studio project Xeno.vcxproj, ConfigurationType=DynamicLibrary, v143, C++20).
+// Pulse can load that DLL straight into the Electron process through the
+// Node-API bridge in PulseCore/bridge, but it is often preferable to keep it in
 // own process:
 //
 //   • a crash inside the core cannot take the editor down;
@@ -23,9 +23,9 @@
 //     cmake -B build && cmake --build build --config Release
 //
 // Usage
-//   PulseCore.exe [--dll <path to Xeno.dll>] [--port 19283]
+//   PulseCore.exe [--dll <path to the core DLL>] [--port 19283]
 
-#include "../include/xeno_api.h"
+#include "../include/pulse_core.h"
 
 #include <atomic>
 #include <cstdio>
@@ -47,9 +47,9 @@ namespace {
 std::atomic<bool> g_running(true);
 void* g_module = nullptr;
 
-void(XENO_CALL* g_initialize)() = nullptr;
-struct XenoClientInfo*(XENO_CALL* g_get_clients)() = nullptr;
-const char*(XENO_CALL* g_compilable)(const char*) = nullptr;
+void(PULSE_CORE_CALL* g_initialize)() = nullptr;
+struct PulseClientInfo*(PULSE_CORE_CALL* g_get_clients)() = nullptr;
+const char*(PULSE_CORE_CALL* g_compilable)(const char*) = nullptr;
 
 void sleep_ms(unsigned int ms) {
 #if defined(_WIN32)
@@ -116,7 +116,7 @@ void handle_signal(int) { g_running = false; }
 
 int main(int argc, char** argv) {
   std::string dll = "Xeno.dll";
-  int port = XENO_DEFAULT_PORT;
+  int port = PULSE_CORE_DEFAULT_PORT;
 
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
@@ -125,9 +125,9 @@ int main(int argc, char** argv) {
     } else if ((arg == "--port" || arg == "-p") && i + 1 < argc) {
       port = std::atoi(argv[++i]);
     } else if (arg == "--help" || arg == "-h") {
-      std::printf("PulseCore — Xeno core host\n"
-                  "  --dll  <path>   Xeno.dll to load (default: Xeno.dll next to this exe)\n"
-                  "  --port <n>      control-plane port (default: %d)\n", XENO_DEFAULT_PORT);
+      std::printf("PulseCore — Pulse core host\n"
+                  "  --dll  <path>   core DLL to load (default: Xeno.dll next to this exe)\n"
+                  "  --port <n>      control-plane port (default: %d)\n", PULSE_CORE_DEFAULT_PORT);
       return 0;
     }
   }
@@ -135,10 +135,13 @@ int main(int argc, char** argv) {
   std::string error;
   g_module = open_core(dll, &error);
   if (!g_module) {
-    // Fall back to a DLL lying next to this executable.
-    const std::string sibling = directory_of(std::string(argv[0])) + "/Xeno.dll";
-    g_module = open_core(sibling, &error);
-    if (g_module) dll = sibling;
+    // Fall back to any core DLL lying next to this executable.
+    const char* candidates[] = {"Xeno.dll", "PulseCore.dll", "Pulse.dll"};
+    for (int i = 0; i < 3 && !g_module; ++i) {
+      const std::string sibling = directory_of(std::string(argv[0])) + "/" + candidates[i];
+      g_module = open_core(sibling, &error);
+      if (g_module) dll = sibling;
+    }
   }
 
   if (!g_module) {
@@ -146,9 +149,9 @@ int main(int argc, char** argv) {
     return 2;
   }
 
-  g_initialize = reinterpret_cast<void(XENO_CALL*)()>(symbol(g_module, "Initialize"));
-  g_get_clients = reinterpret_cast<struct XenoClientInfo*(XENO_CALL*)()>(symbol(g_module, "GetClients"));
-  g_compilable = reinterpret_cast<const char*(XENO_CALL*)(const char*)>(symbol(g_module, "Compilable"));
+  g_initialize = reinterpret_cast<void(PULSE_CORE_CALL*)()>(symbol(g_module, "Initialize"));
+  g_get_clients = reinterpret_cast<struct PulseClientInfo*(PULSE_CORE_CALL*)()>(symbol(g_module, "GetClients"));
+  g_compilable = reinterpret_cast<const char*(PULSE_CORE_CALL*)(const char*)>(symbol(g_module, "Compilable"));
 
   if (!g_initialize) {
     std::fprintf(stderr, "[PulseCore] %s does not export Initialize()\n", dll.c_str());
@@ -178,11 +181,11 @@ int main(int argc, char** argv) {
     idle += 1;
 
     if (idle % 20 == 0 && g_get_clients) {
-      struct XenoClientInfo* clients = g_get_clients();
+      struct PulseClientInfo* clients = g_get_clients();
       int count = 0;
       if (clients) {
         for (int i = 0; i < 4096; ++i) {
-          const struct XenoClientInfo& entry = clients[i];
+          const struct PulseClientInfo& entry = clients[i];
           if (!entry.Version && !entry.Username && entry.PID == 0) break;
           count += 1;
         }

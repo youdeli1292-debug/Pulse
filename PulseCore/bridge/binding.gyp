@@ -1,9 +1,9 @@
 {
   "targets": [
     {
-      "target_name": "pulse_xeno",
+      "target_name": "pulse_core",
       "sources": [
-        "pulse_xeno.cpp"
+        "pulse_core.cpp"
       ],
       "defines": [
         "NAPI_VERSION=8",

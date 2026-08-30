@@ -782,14 +782,14 @@ ipcMain.handle('pulse:cancel', (_event, runId) => {
 ipcMain.handle('pulse:running', () => Array.from(running.keys()));
 
 // ---------------------------------------------------------------------------
-// Xeno C++ core bridge
+// PulseCore — bridge to the C++ core
 //
-// The original XenoUI (C#) drives the compiled core through four exported
+// The original C# shell drives the compiled core through four exported
 // functions and a local HTTP API. Pulse keeps exactly the same contract, but
 // from the Electron main process:
 //
-//   native (preferred)   LoadLibrary("Xeno.dll")  ->  Initialize / GetClients /
-//                        Execute / Compilable, via the pulse_xeno.node addon
+//   native (preferred)   LoadLibrary of the core DLL  ->  Initialize / GetClients /
+//                        Execute / Compilable, via the pulse_core.node addon
 //   http (always there)  spawn the compiled core module with child_process and
 //                        talk to its HTTP server on 127.0.0.1:19283
 //
@@ -797,24 +797,28 @@ ipcMain.handle('pulse:running', () => Array.from(running.keys()));
 //   Compilable() returns "success" or the Luau compiler error text.
 // ---------------------------------------------------------------------------
 
-const XENO_PORT = Number(process.env.PULSE_XENO_PORT || 19283);
-const XENO_HOST = '127.0.0.1';
+const CORE_PORT = Number(process.env.PULSE_CORE_PORT || 19283);
+const CORE_HOST = '127.0.0.1';
 
 /** Where the compiled core can live, relative to the project / resources. */
-const XENO_DLL_RELATIVE = [
-  ['Xeno', 'bin', 'Xeno.dll'],
-  ['Xeno', 'x64', 'Release', 'Xeno.dll'],
-  ['Xeno', 'Release', 'Xeno.dll'],
-  ['Xeno', 'build', 'Release', 'Xeno.dll'],
-  ['Xeno', 'bin', 'PulseCore.dll'],
+// The core is dropped into PulseCore/bin. Any DLL/EXE built from the C++
+// project works — the names below are simply tried in order.
+const CORE_DLL_RELATIVE = [
+  ['PulseCore', 'bin', 'PulseCore.dll'],
+  ['PulseCore', 'bin', 'Xeno.dll'],
+  ['PulseCore', 'bin', 'Pulse.dll'],
+  ['PulseCore', 'x64', 'Release', 'Xeno.dll'],
+  ['PulseCore', 'Release', 'Xeno.dll'],
+  ['PulseCore', 'build', 'Release', 'Xeno.dll'],
 ];
 
-const XENO_EXE_RELATIVE = [
-  ['Xeno', 'bin', 'Xeno.exe'],
-  ['Xeno', 'bin', 'PulseCore.exe'],
-  ['Xeno', 'x64', 'Release', 'Xeno.exe'],
-  ['Xeno', 'Release', 'Xeno.exe'],
-  ['Xeno', 'build', 'Release', 'Xeno.exe'],
+const CORE_EXE_RELATIVE = [
+  ['PulseCore', 'bin', 'PulseCore.exe'],
+  ['PulseCore', 'bin', 'Xeno.exe'],
+  ['PulseCore', 'bin', 'Pulse.exe'],
+  ['PulseCore', 'x64', 'Release', 'Xeno.exe'],
+  ['PulseCore', 'Release', 'Xeno.exe'],
+  ['PulseCore', 'build', 'Release', 'Xeno.exe'],
 ];
 
 function resourceRoot() {
@@ -827,7 +831,7 @@ function packagedOrDev(segments) {
   // extraResources entry in package.json), development builds read it from
   // the repository checkout.
   if (app.isPackaged && process.resourcesPath) {
-    return [path.join(process.resourcesPath, 'xeno', segments[segments.length - 1]),
+    return [path.join(process.resourcesPath, 'core', segments[segments.length - 1]),
       path.join(process.resourcesPath, ...segments)];
   }
   return [path.join(app.getAppPath(), ...segments)];
@@ -840,25 +844,25 @@ function firstExisting(candidates) {
   return null;
 }
 
-function xenoPaths() {
+function corePaths() {
   const dllCandidates = [];
   const exeCandidates = [];
   const addonCandidates = [];
 
-  if (process.env.PULSE_XENO_DLL) dllCandidates.push(process.env.PULSE_XENO_DLL);
-  if (process.env.PULSE_XENO_EXE) exeCandidates.push(process.env.PULSE_XENO_EXE);
+  if (process.env.PULSE_CORE_DLL) dllCandidates.push(process.env.PULSE_CORE_DLL);
+  if (process.env.PULSE_CORE_EXE) exeCandidates.push(process.env.PULSE_CORE_EXE);
 
-  XENO_DLL_RELATIVE.forEach((segments) => dllCandidates.push(...packagedOrDev(segments)));
-  XENO_EXE_RELATIVE.forEach((segments) => exeCandidates.push(...packagedOrDev(segments)));
+  CORE_DLL_RELATIVE.forEach((segments) => dllCandidates.push(...packagedOrDev(segments)));
+  CORE_EXE_RELATIVE.forEach((segments) => exeCandidates.push(...packagedOrDev(segments)));
 
-  addonCandidates.push(path.join(resourceRoot(), 'Xeno', 'bridge', 'build', 'Release', 'pulse_xeno.node'));
-  addonCandidates.push(path.join(resourceRoot(), 'Xeno', 'bridge', 'build', 'Debug', 'pulse_xeno.node'));
+  addonCandidates.push(path.join(resourceRoot(), 'PulseCore', 'bridge', 'build', 'Release', 'pulse_core.node'));
+  addonCandidates.push(path.join(resourceRoot(), 'PulseCore', 'bridge', 'build', 'Debug', 'pulse_core.node'));
   if (app.isPackaged && process.resourcesPath) {
-    // electron-builder copies Xeno/bin and the compiled addon to resources/Xeno
+    // electron-builder copies PulseCore/bin and the addon to resources/PulseCore
     // through the extraResources entry of package.json.
-    addonCandidates.push(path.join(process.resourcesPath, 'Xeno', 'bridge', 'build', 'Release', 'pulse_xeno.node'));
-    addonCandidates.push(path.join(process.resourcesPath, 'Xeno', 'bridge', 'build', 'Debug', 'pulse_xeno.node'));
-    addonCandidates.push(path.join(process.resourcesPath, 'native', 'pulse_xeno.node'));
+    addonCandidates.push(path.join(process.resourcesPath, 'PulseCore', 'bridge', 'build', 'Release', 'pulse_core.node'));
+    addonCandidates.push(path.join(process.resourcesPath, 'PulseCore', 'bridge', 'build', 'Debug', 'pulse_core.node'));
+    addonCandidates.push(path.join(process.resourcesPath, 'native', 'pulse_core.node'));
   }
 
   return {
@@ -869,9 +873,9 @@ function xenoPaths() {
 }
 
 /** Live state of the bridge. */
-const xeno = {
+const core = {
   mode: 'none',          // 'native' | 'child' | 'external' | 'none'
-  bridge: null,          // loaded pulse_xeno.node addon
+  bridge: null,          // loaded pulse_core.node addon
   addonPath: null,
   corePath: null,
   child: null,           // spawned core process (mode === 'child')
@@ -881,30 +885,30 @@ const xeno = {
   lastError: null,
 };
 
-function xenoLog(line, stream = 'system') {
-  sendToWindow('pulse:run-output', { runId: 'xeno', stream, chunk: String(line), at: timestamp() });
+function coreLog(line, stream = 'system') {
+  sendToWindow('pulse:run-output', { runId: 'core', stream, chunk: String(line), at: timestamp() });
 }
 
-function xenoInfo() {
-  const paths = xenoPaths();
+function coreInfo() {
+  const paths = corePaths();
   return {
-    mode: xeno.mode,
-    ready: xeno.ready,
-    port: XENO_PORT,
-    host: XENO_HOST,
+    mode: core.mode,
+    ready: core.ready,
+    port: CORE_PORT,
+    host: CORE_HOST,
     available: Boolean(paths.dll || paths.exe || paths.addon),
     dllPath: paths.dll,
     exePath: paths.exe,
     addonPath: paths.addon,
-    corePath: xeno.corePath,
-    clients: xeno.clients,
-    lastError: xeno.lastError,
+    corePath: core.corePath,
+    clients: core.clients,
+    lastError: core.lastError,
   };
 }
 
 /* ------------------------------------------------------------ http layer */
 
-function xenoRequest(method, urlPath, { body = null, contentType = 'text/plain', params = null, timeout = 15000 } = {}) {
+function coreRequest(method, urlPath, { body = null, contentType = 'text/plain', params = null, timeout = 15000 } = {}) {
   return new Promise((resolve, reject) => {
     const query = params ? `?${new URLSearchParams(params).toString()}` : '';
     const headers = { Accept: '*/*', Connection: 'close' };
@@ -915,14 +919,14 @@ function xenoRequest(method, urlPath, { body = null, contentType = 'text/plain',
       headers['Content-Length'] = '0';
     }
 
-    const request = http.request({ host: XENO_HOST, port: XENO_PORT, path: `${urlPath}${query}`, method, headers }, (response) => {
+    const request = http.request({ host: CORE_HOST, port: CORE_PORT, path: `${urlPath}${query}`, method, headers }, (response) => {
       let data = '';
       response.setEncoding('utf8');
       response.on('data', (chunk) => { data += chunk; });
       response.on('end', () => resolve({ status: response.statusCode, text: data }));
     });
 
-    request.setTimeout(timeout, () => request.destroy(new Error(`Xeno core did not answer within ${timeout} ms`)));
+    request.setTimeout(timeout, () => request.destroy(new Error(`the Pulse core did not answer within ${timeout} ms`)));
     request.on('error', reject);
     if (body !== null && body !== undefined) request.write(body);
     request.end();
@@ -930,20 +934,20 @@ function xenoRequest(method, urlPath, { body = null, contentType = 'text/plain',
 }
 
 /** POST /send — the JSON command dispatcher of the core. */
-function xenoSend(command, extra = {}) {
-  return xenoRequest('POST', '/send', {
+function coreSend(command, extra = {}) {
+  return coreRequest('POST', '/send', {
     body: JSON.stringify(Object.assign({ c: command }, extra)),
     contentType: 'application/json',
   });
 }
 
 /** POST /compilable — "success" or the Luau compiler error text. */
-async function xenoCompilable(source) {
-  if (xeno.mode === 'native' && xeno.bridge) {
-    const result = xeno.bridge.compilable(String(source));
+async function coreCompilable(source) {
+  if (core.mode === 'native' && core.bridge) {
+    const result = core.bridge.compilable(String(source));
     return { ok: result === 'success', detail: result, source: 'native' };
   }
-  const response = await xenoRequest('POST', '/compilable', { body: String(source), contentType: 'text/plain' });
+  const response = await coreRequest('POST', '/compilable', { body: String(source), contentType: 'text/plain' });
   const detail = (response.text || '').trim();
   return {
     ok: response.status === 200 && detail === 'success',
@@ -983,7 +987,7 @@ function loadNativeBridge(addonPath) {
   try {
     const addon = require(addonPath);
     if (typeof addon.load !== 'function' || typeof addon.initialize !== 'function') {
-      return { ok: false, error: 'addon does not expose the Xeno bridge API' };
+      return { ok: false, error: 'addon does not expose the Pulse core bridge API' };
     }
     return { ok: true, addon };
   } catch (error) {
@@ -994,7 +998,7 @@ function loadNativeBridge(addonPath) {
 /* --------------------------------------------------------- client list */
 
 function readClientsNative() {
-  const raw = xeno.bridge.getClients();
+  const raw = core.bridge.getClients();
   const list = Array.isArray(raw) ? raw : [];
   return list
     .filter((client) => client && Number(client.id || client.pid || 0) > 0)
@@ -1054,36 +1058,36 @@ function findRobloxProcesses() {
 async function refreshClients() {
   let clients = [];
   try {
-    clients = xeno.mode === 'native' ? readClientsNative() : await readClientsHttp();
+    clients = core.mode === 'native' ? readClientsNative() : await readClientsHttp();
   } catch (error) {
     clients = [];
-    xeno.lastError = error && error.message ? error.message : String(error);
+    core.lastError = error && error.message ? error.message : String(error);
   }
-  xeno.clients = clients;
-  sendToWindow('pulse:clients', { clients, mode: xeno.mode, ready: xeno.ready });
+  core.clients = clients;
+  sendToWindow('pulse:clients', { clients, mode: core.mode, ready: core.ready });
   return clients;
 }
 
 function startClientPolling() {
   stopClientPolling();
   refreshClients();
-  xeno.pollTimer = setInterval(() => { refreshClients().catch(() => {}); }, 1000);
+  core.pollTimer = setInterval(() => { refreshClients().catch(() => {}); }, 1000);
 }
 
 function stopClientPolling() {
-  if (xeno.pollTimer) {
-    clearInterval(xeno.pollTimer);
-    xeno.pollTimer = null;
+  if (core.pollTimer) {
+    clearInterval(core.pollTimer);
+    core.pollTimer = null;
   }
 }
 
 /* ------------------------------------------------------- attach / detach */
 
-async function attachXeno() {
-  if (xeno.ready) return { ok: true, mode: xeno.mode, clients: xeno.clients, port: XENO_PORT, already: true };
+async function attachCore() {
+  if (core.ready) return { ok: true, mode: core.mode, clients: core.clients, port: CORE_PORT, already: true };
 
-  const paths = xenoPaths();
-  xeno.lastError = null;
+  const paths = corePaths();
+  core.lastError = null;
 
   // 1. native: load the compiled DLL straight into the Electron process
   if (paths.addon && paths.dll) {
@@ -1092,49 +1096,49 @@ async function attachXeno() {
       try {
         loaded.addon.load(paths.dll);
         loaded.addon.initialize();
-        xeno.bridge = loaded.addon;
-        xeno.addonPath = paths.addon;
-        xeno.corePath = paths.dll;
-        xeno.mode = 'native';
-        xeno.ready = true;
-        xenoLog(`▸ Xeno core loaded in-process (${path.basename(paths.dll)})\n`);
+        core.bridge = loaded.addon;
+        core.addonPath = paths.addon;
+        core.corePath = paths.dll;
+        core.mode = 'native';
+        core.ready = true;
+        coreLog(`▸ Pulse core loaded in-process (${path.basename(paths.dll)})\n`);
         startClientPolling();
-        sendToWindow('pulse:attach-status', { connected: true, mode: 'xeno-native', target: path.basename(paths.dll), clients: xeno.clients });
-        return { ok: true, mode: 'native', core: paths.dll, clients: xeno.clients, port: XENO_PORT };
+        sendToWindow('pulse:attach-status', { connected: true, mode: 'core-native', target: path.basename(paths.dll), clients: core.clients });
+        return { ok: true, mode: 'native', core: paths.dll, clients: core.clients, port: CORE_PORT };
       } catch (error) {
-        xeno.lastError = error && error.message ? error.message : String(error);
-        xenoLog(`✖ native core failed: ${xeno.lastError}\n`, 'stderr');
+        core.lastError = error && error.message ? error.message : String(error);
+        coreLog(`✖ native core failed: ${core.lastError}\n`, 'stderr');
       }
     } else {
-      xeno.lastError = loaded.error;
-      xenoLog(`▸ native bridge unavailable (${loaded.error}) — falling back to the executable\n`);
+      core.lastError = loaded.error;
+      coreLog(`▸ native bridge unavailable (${loaded.error}) — falling back to the executable\n`);
     }
   }
 
   // 2. an already running core keeps the port open — just bind to it
   try {
-    await waitForPort(XENO_PORT, XENO_HOST, 900);
-    xeno.mode = 'external';
-    xeno.ready = true;
-    xeno.corePath = paths.exe || `external core on ${XENO_HOST}:${XENO_PORT}`;
-    xenoLog(`▸ bound to a running Xeno core on ${XENO_HOST}:${XENO_PORT}\n`);
+    await waitForPort(CORE_PORT, CORE_HOST, 900);
+    core.mode = 'external';
+    core.ready = true;
+    core.corePath = paths.exe || `external core on ${CORE_HOST}:${CORE_PORT}`;
+    coreLog(`▸ bound to a running Pulse core on ${CORE_HOST}:${CORE_PORT}\n`);
     startClientPolling();
-    sendToWindow('pulse:attach-status', { connected: true, mode: 'xeno-external', target: `${XENO_HOST}:${XENO_PORT}`, clients: xeno.clients });
-    return { ok: true, mode: 'external', port: XENO_PORT, clients: xeno.clients };
+    sendToWindow('pulse:attach-status', { connected: true, mode: 'core-external', target: `${CORE_HOST}:${CORE_PORT}`, clients: core.clients });
+    return { ok: true, mode: 'external', port: CORE_PORT, clients: core.clients };
   } catch (_) {
     /* nothing is listening yet — spawn the module below */
   }
 
   // 3. child_process: start the compiled automation module ourselves
   if (!paths.exe) {
-    const error = xeno.lastError
-      ? `${xeno.lastError} · no core executable found`
-      : 'Xeno core not found — put Xeno.dll / Xeno.exe into Xeno/bin (see Xeno/README.md)';
-    xeno.lastError = error;
-    return { ok: false, error, hint: 'Xeno/bin' };
+    const error = core.lastError
+      ? `${core.lastError} · no core executable found`
+      : 'Pulse core not found — put the compiled core into PulseCore\bin (see PulseCore\README.md)';
+    core.lastError = error;
+    return { ok: false, error, hint: 'PulseCore/bin' };
   }
 
-  xenoLog(`▸ starting core module ${paths.exe}\n`);
+  coreLog(`▸ starting core module ${paths.exe}\n`);
 
   const child = spawn(paths.exe, [], {
     cwd: path.dirname(paths.exe),
@@ -1142,116 +1146,116 @@ async function attachXeno() {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
-  xeno.child = child;
-  xeno.corePath = paths.exe;
-  xeno.mode = 'child';
+  core.child = child;
+  core.corePath = paths.exe;
+  core.mode = 'child';
 
   const forward = (chunk, stream) => {
-    String(chunk).split(/\r?\n/).filter(Boolean).forEach((line) => xenoLog(`${line}\n`, stream));
+    String(chunk).split(/\r?\n/).filter(Boolean).forEach((line) => coreLog(`${line}\n`, stream));
   };
   if (child.stdout) child.stdout.on('data', (chunk) => forward(chunk, 'stdout'));
   if (child.stderr) child.stderr.on('data', (chunk) => forward(chunk, 'stderr'));
 
   child.on('error', (error) => {
-    xeno.lastError = error.message;
-    xenoLog(`✖ core process error: ${error.message}\n`, 'stderr');
+    core.lastError = error.message;
+    coreLog(`✖ core process error: ${error.message}\n`, 'stderr');
   });
 
   child.on('exit', (code, signal) => {
-    if (xeno.child === child) {
-      xenoLog(`▸ core process exited (code ${code}${signal ? `, signal ${signal}` : ''})\n`, 'system');
-      detachXeno(`core exited with code ${code}`);
-      sendToWindow('pulse:attach-status', { connected: false, mode: 'xeno-child', reason: `core exited (code ${code})`, clients: [] });
+    if (core.child === child) {
+      coreLog(`▸ core process exited (code ${code}${signal ? `, signal ${signal}` : ''})\n`, 'system');
+      detachCore(`core exited with code ${code}`);
+      sendToWindow('pulse:attach-status', { connected: false, mode: 'core-child', reason: `core exited (code ${code})`, clients: [] });
     }
   });
 
   try {
-    await waitForPort(XENO_PORT, XENO_HOST, 25000);
+    await waitForPort(CORE_PORT, CORE_HOST, 25000);
   } catch (error) {
-    xeno.lastError = `core did not open ${XENO_HOST}:${XENO_PORT} — ${error.message}`;
-    return { ok: false, error: xeno.lastError };
+    core.lastError = `core did not open ${CORE_HOST}:${CORE_PORT} — ${error.message}`;
+    return { ok: false, error: core.lastError };
   }
 
-  xeno.ready = true;
-  xenoLog(`▸ core is listening on ${XENO_HOST}:${XENO_PORT}\n`);
+  core.ready = true;
+  coreLog(`▸ core is listening on ${CORE_HOST}:${CORE_PORT}\n`);
   startClientPolling();
-  sendToWindow('pulse:attach-status', { connected: true, mode: 'xeno-child', target: path.basename(paths.exe), clients: xeno.clients });
-  return { ok: true, mode: 'child', core: paths.exe, clients: xeno.clients, port: XENO_PORT };
+  sendToWindow('pulse:attach-status', { connected: true, mode: 'core-child', target: path.basename(paths.exe), clients: core.clients });
+  return { ok: true, mode: 'child', core: paths.exe, clients: core.clients, port: CORE_PORT };
 }
 
-function detachXeno(reason) {
+function detachCore(reason) {
   stopClientPolling();
 
-  if (xeno.child) {
-    const child = xeno.child;
-    xeno.child = null;
+  if (core.child) {
+    const child = core.child;
+    core.child = null;
     child.removeAllListeners('exit');
     try { child.kill(); } catch (_) { /* already gone */ }
   }
 
-  const wasReady = xeno.ready;
-  xeno.ready = false;
-  xeno.mode = 'none';
-  xeno.clients = [];
+  const wasReady = core.ready;
+  core.ready = false;
+  core.mode = 'none';
+  core.clients = [];
   // The DLL stays loaded on purpose: it owns background threads, and
   // FreeLibrary on a module with running threads would crash the app.
-  sendToWindow('pulse:clients', { clients: [], mode: xeno.mode, ready: false });
+  sendToWindow('pulse:clients', { clients: [], mode: core.mode, ready: false });
   return { ok: true, wasReady, reason: reason || 'detached' };
 }
 
 /* -------------------------------------------------------------- execute */
 
-async function executeXeno(source, { chunkName = 'Pulse', scriptName = 'pulse-script', pid = null, user = null } = {}) {
-  if (!xeno.ready) return { ok: false, error: 'core is not attached' };
+async function executeCore(source, { chunkName = 'Pulse', scriptName = 'pulse-script', pid = null, user = null } = {}) {
+  if (!core.ready) return { ok: false, error: 'core is not attached' };
 
-  const compile = await xenoCompilable(source).catch((error) => ({
+  const compile = await coreCompilable(source).catch((error) => ({
     ok: false,
     detail: error && error.message ? error.message : String(error),
     source: 'error',
   }));
   if (!compile.ok) {
-    return { ok: false, engine: 'xeno', error: `compile error: ${compile.detail}`, stage: 'compile' };
+    return { ok: false, engine: 'core', error: `compile error: ${compile.detail}`, stage: 'compile' };
   }
 
   const targets = [];
-  if (xeno.mode === 'native' && xeno.bridge) {
-    const names = user ? [user] : xeno.clients.map((client) => client.name).filter(Boolean);
-    if (!names.length) return { ok: false, engine: 'xeno', error: 'no Roblox client detected', stage: 'target' };
-    xeno.bridge.execute(String(source), names);
+  if (core.mode === 'native' && core.bridge) {
+    const names = user ? [user] : core.clients.map((client) => client.name).filter(Boolean);
+    if (!names.length) return { ok: false, engine: 'core', error: 'no Roblox client detected', stage: 'target' };
+    core.bridge.execute(String(source), names);
     targets.push(...names);
-    return { ok: true, engine: 'xeno', mode: 'native', targets, stage: 'execute' };
+    return { ok: true, engine: 'core', mode: 'native', targets, stage: 'execute' };
   }
 
-  const pids = pid ? [Number(pid)] : xeno.clients.map((client) => client.pid);
-  if (!pids.length) return { ok: false, engine: 'xeno', error: 'no Roblox client detected', stage: 'target' };
+  const pids = pid ? [Number(pid)] : core.clients.map((client) => client.pid);
+  if (!pids.length) return { ok: false, engine: 'core', error: 'no Roblox client detected', stage: 'target' };
 
   const failures = [];
   for (const targetPid of pids) {
-    const response = await xenoRequest('POST', '/loadstring', {
+    const response = await coreRequest('POST', '/loadstring', {
       body: String(source),
       contentType: 'text/plain',
       params: { n: scriptName, pid: String(targetPid), cn: chunkName },
     }).catch((error) => ({ status: 0, text: error && error.message ? error.message : String(error) }));
 
     if (response.status === 200) targets.push(targetPid);
-    else failures.push({ pid: targetPid, error: parseXenoError(response) });
+    else failures.push({ pid: targetPid, error: parseCoreError(response) });
   }
 
   if (!targets.length) {
-    return { ok: false, engine: 'xeno', mode: xeno.mode, error: failures.map((f) => `pid ${f.pid}: ${f.error}`).join(' | '), stage: 'execute' };
+    return { ok: false, engine: 'core', mode: core.mode, error: failures.map((f) => `pid ${f.pid}: ${f.error}`).join(' | '), stage: 'execute' };
   }
 
   return {
     ok: true,
-    engine: 'xeno',
-    mode: xeno.mode,
+    engine: 'core',
+    mode: core.mode,
     targets,
     failures,
     stage: 'execute',
   };
 }
 
-function parseXenoError(response) {
+function parseCoreError(response) {
   try {
     const parsed = JSON.parse(response.text);
     if (parsed && parsed.error) return parsed.error;
@@ -1281,11 +1285,11 @@ function stopPidWatcher() {
 
 ipcMain.handle('pulse:attach', async (event, options = {}) => {
   // The Attach button is bound to the C++ core: native FFI when the bridge
-  // addon and Xeno.dll are available, otherwise the compiled core module is
+  // addon and the core DLL are available, otherwise the compiled core module is
   // launched through child_process and driven over its HTTP channel.
-  const paths = xenoPaths();
+  const paths = corePaths();
   if (!options.mode && (paths.dll || paths.exe || paths.addon)) {
-    return attachXeno().catch((error) => ({ ok: false, error: error && error.message ? error.message : String(error) }));
+    return attachCore().catch((error) => ({ ok: false, error: error && error.message ? error.message : String(error) }));
   }
 
   const mode = options.mode === 'process' ? 'process' : 'tcp';
@@ -1379,22 +1383,22 @@ ipcMain.handle('pulse:attach-send', (_event, payload = {}) => {
 ipcMain.handle('pulse:detach', () => {
   stopPidWatcher();
   detachSocket('detached by user');
-  const xenoResult = xeno.ready || xeno.child ? detachXeno('detached by user') : { ok: true, wasReady: false };
+  const coreResult = core.ready || core.child ? detachCore('detached by user') : { ok: true, wasReady: false };
   sendToWindow('pulse:attach-status', { connected: false, mode: 'detached', reason: 'detached' });
-  return { ok: true, xeno: xenoResult };
+  return { ok: true, core: coreResult };
 });
 
-ipcMain.handle('pulse:xeno-info', () => xenoInfo());
+ipcMain.handle('pulse:core-info', () => coreInfo());
 
-ipcMain.handle('pulse:xeno-clients', async () => {
-  if (!xeno.ready) return { ready: false, clients: [], mode: xeno.mode };
+ipcMain.handle('pulse:core-clients', async () => {
+  if (!core.ready) return { ready: false, clients: [], mode: core.mode };
   const clients = await refreshClients();
-  return { ready: true, mode: xeno.mode, clients };
+  return { ready: true, mode: core.mode, clients };
 });
 
-ipcMain.handle('pulse:xeno-compilable', async (_event, { source } = {}) => {
-  if (!xeno.ready) return { ok: false, error: 'core is not attached' };
-  return xenoCompilable(String(source || ''));
+ipcMain.handle('pulse:core-compilable', async (_event, { source } = {}) => {
+  if (!core.ready) return { ok: false, error: 'core is not attached' };
+  return coreCompilable(String(source || ''));
 });
 
 /**
@@ -1405,16 +1409,16 @@ ipcMain.handle('pulse:xeno-compilable', async (_event, { source } = {}) => {
 ipcMain.handle('pulse:execute', async (event, payload = {}) => {
   const source = payload.code == null ? '' : String(payload.code);
 
-  if (xeno.ready) {
+  if (core.ready) {
     try {
-      const result = await executeXeno(source, {
+      const result = await executeCore(source, {
         chunkName: payload.chunkName || 'Pulse',
         scriptName: payload.scriptName || (payload.filePath ? path.basename(payload.filePath) : 'pulse-script'),
         pid: payload.pid || null,
         user: payload.user || null,
       });
       sendToWindow('pulse:run-output', {
-        runId: 'xeno',
+        runId: 'core',
         stream: result.ok ? 'system' : 'stderr',
         chunk: result.ok
           ? `\u25b8 sent to ${result.targets.length} client(s) via the ${result.mode} core\n`
@@ -1423,7 +1427,7 @@ ipcMain.handle('pulse:execute', async (event, payload = {}) => {
       });
       return result;
     } catch (error) {
-      return { ok: false, engine: 'xeno', error: error && error.message ? error.message : String(error) };
+      return { ok: false, engine: 'core', error: error && error.message ? error.message : String(error) };
     }
   }
 

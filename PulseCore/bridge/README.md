@@ -1,13 +1,13 @@
-# Xeno/bridge — Node-API bridge to the Xeno C++ core
+# PulseCore/bridge — Node-API bridge to the Pulse C++ core
 
-`pulse_xeno.node` is the compiled data-exchange module of Pulse. It loads
-`Xeno.dll` into the Electron process with `LoadLibrary` (or `dlopen` on POSIX),
+`pulse_core.node` is the compiled data-exchange module of Pulse. It loads the
+core DLL into the Electron process with `LoadLibrary` (or `dlopen` on POSIX),
 resolves the four exports of the core and hands them to JavaScript:
 
 ```js
-const bridge = require('./build/Release/pulse_xeno.node');
+const bridge = require('./build/Release/pulse_core.node');
 
-bridge.load('Xeno/bin/Xeno.dll');   // -> { path, exports: ['Initialize', 'GetClients', 'Execute', 'Compilable'] }
+bridge.load('PulseCore/bin/PulseCore.dll');  // -> { path, exports: [...] }
 bridge.initialize();                // boots the client scanner + the control plane
 bridge.getClients();                // -> [{ pid, id, name, user, version }, …]
 bridge.compilable('print(1)');      // -> 'success' | '<luau error>'
@@ -16,8 +16,8 @@ bridge.info();                      // -> { loaded, path, error, platform, expor
 bridge.unload();                    // only when the core has no live threads
 ```
 
-`main.js` calls exactly these functions (`attachXeno`, `readClientsNative`,
-`executeXeno`, `xenoCompilable`). If the addon is missing, Pulse automatically
+`main.js` calls exactly these functions (`attachCore`, `readClientsNative`,
+`executeCore`, `coreCompilable`). If the addon is missing, Pulse automatically
 uses the HTTP route instead (spawned `PulseCore.exe` or an already running core
 on `127.0.0.1:19283`), so the application never depends on this build step.
 
@@ -31,10 +31,10 @@ From the repository root:
 
 ```bat
 npm install
-npm run build:xeno
+npm run build:core
 ```
 
-which runs `node Xeno/bridge/build.js`, i.e.
+which runs `node PulseCore/bridge/build.js`, i.e.
 
 ```bat
 node-gyp rebuild --target=<electron version> --arch=x64 --dist-url=https://electronjs.org/headers
@@ -47,4 +47,4 @@ Requirements:
 * **macOS** — Xcode command line tools (`xcode-select --install`).
 * **Linux** — `build-essential` + `python3`.
 
-Output: `Xeno/bridge/build/Release/pulse_xeno.node`.
+Output: `PulseCore/bridge/build/Release/pulse_core.node`.

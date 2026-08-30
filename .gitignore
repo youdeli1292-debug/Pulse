@@ -21,9 +21,10 @@ desktop.ini
 .idea/
 *.swp
 
-# compiled Xeno core / native bridge build output
-Xeno/bin/*.dll
-Xeno/bin/*.exe
-Xeno/bin/*.pdb
-Xeno/bridge/build/
-Xeno/host/build/
+# compiled core / native bridge build output
+PulseCore/bin/*.dll
+PulseCore/bin/*.exe
+PulseCore/bin/*.pdb
+PulseCore/bridge/build/
+PulseCore/host/build/
+PulseCore/core/

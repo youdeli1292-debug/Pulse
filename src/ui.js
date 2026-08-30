@@ -1,5 +1,5 @@
 /* =========================================================================
-   Pulse — Electron shell for the Xeno C++ core (renderer)
+   Pulse — Electron shell for the C++ core (renderer)
 
    • Monaco is locked to Lua, the built-in fallback editor is Lua-only too
    • left column:  Execute / Clear / Attach / Open File / Script Hub
@@ -7,7 +7,7 @@
    • bottom:      slim status bar with Status: Not Attached / Status: Attached
 
    All privileged work happens in main.js:
-     Attach  -> pulse:attach    (native FFI into Xeno.dll, or the compiled
+     Attach  -> pulse:attach    (native FFI into the core DLL, or the compiled
                                  core module spawned with child_process)
      Execute -> pulse:execute   (core when attached, local Lua otherwise)
    ========================================================================= */
@@ -1089,10 +1089,10 @@ function renderStatus() {
   dom.stEngine.textContent = state.engine;
   dom.sideEngine.textContent = state.engine;
   const core = state.core;
-  const coreName = core.corePath
-    ? core.corePath.split(/[\\/]/).pop()
-    : (core.dllPath ? core.dllPath.split(/[\\/]/).pop() : (core.exePath ? core.exePath.split(/[\\/]/).pop() : 'not found'));
+  const corePath = core.corePath || core.dllPath || core.exePath || null;
+  const coreName = corePath ? 'Pulse Core' : 'not found';
   dom.sideCore.textContent = coreName;
+  dom.sideCore.title = corePath || 'the compiled core was not found in PulseCore\\bin';
   dom.sideCore.classList.toggle('is-on', Boolean(core.ready));
   dom.sideMode.textContent = core.ready ? (core.mode === 'native' ? 'native dll' : `http :${core.port}`) : 'offline';
   dom.sideMode.classList.toggle('is-on', Boolean(core.ready));
@@ -1100,7 +1100,7 @@ function renderStatus() {
 }
 
 function refreshCoreInfo() {
-  return window.pulse.xenoInfo()
+  return window.pulse.coreInfo()
     .then((info) => { state.core = Object.assign(state.core, info); renderStatus(); return info; })
     .catch(() => state.core);
 }
@@ -1127,6 +1127,7 @@ async function attach() {
     await window.pulse.detach();
     setAttached(false, 'detached');
     setClients([]);
+    await refreshCoreInfo();
     return;
   }
 
@@ -1136,7 +1137,7 @@ async function attach() {
   if (!result || !result.ok) {
     const reason = (result && result.error) || 'attach failed';
     setAttached(false, `not attached · ${reason}`);
-    showToast('attach failed', `${reason}\n\nPut Xeno.dll / Xeno.exe into Xeno\\bin (see Xeno\\README.md).`);
+    showToast('attach failed', `${reason}\n\nPut the compiled core into PulseCore\\bin — see PulseCore\\README.md.`);
     return;
   }
 
@@ -1176,7 +1177,7 @@ async function execute() {
   try {
     const result = await window.pulse.execute(payload);
 
-    if (result.engine === 'xeno') {
+    if (result.engine === 'core') {
       if (result.ok) {
         setMessage(`sent to ${result.targets.length} client(s)`);
         showToast('core · sent', `delivered to: ${result.targets.join(', ')}`);
@@ -1310,9 +1311,9 @@ function toggleHub(force) {
 
 const WELCOME =
 `--[[
-    PULSE  -  Lua executor for the Xeno C++ core
+    PULSE  -  Lua executor built on the Pulse C++ core
     --------------------------------------------------------------
-    Attach    loads Xeno.dll (native) or starts the core module
+    Attach    loads the core DLL (native) or starts the core module
     Execute   sends the buffer to the core, or runs it with the
               local Lua interpreter when no core is attached
     --------------------------------------------------------------
@@ -1356,7 +1357,7 @@ function bindUi() {
     renderHub();
   });
   $('toast-close').addEventListener('click', hideToast);
-  dom.stClients.addEventListener('click', () => window.pulse.xenoClients().then((info) => setClients(info.clients || [])));
+  dom.stClients.addEventListener('click', () => window.pulse.coreClients().then((info) => setClients(info.clients || [])));
 
   window.addEventListener('keydown', (event) => {
     const mod = event.ctrlKey || event.metaKey;
@@ -1431,7 +1432,7 @@ async function boot() {
   await initLocalLua();
   const core = await refreshCoreInfo();
   if (!core.available) {
-    setMessage('core not found — put Xeno.dll / Xeno.exe into Xeno\\bin');
+    setMessage('core not found — put the compiled core into PulseCore\\bin');
   } else if (core.ready) {
     setAttached(true, `core ready · ${core.mode}`);
     setClients(core.clients || []);
